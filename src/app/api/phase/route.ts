@@ -5,7 +5,7 @@ import { WorkflowPhase, AgentConfig } from '../../../domain/models/types';
 
 export async function POST(req: Request) {
   try {
-    const { action, phase, featureName, agentConfig, prompt } = await req.json();
+    const { action, phase, featureName, agentConfig, prompt, text } = await req.json();
 
     if (!action || !phase) {
       return NextResponse.json({ error: 'Missing action or phase' }, { status: 400 });
@@ -21,6 +21,11 @@ export async function POST(req: Request) {
     if (action === 'discard') {
       const state = await workflowService.discardPhase(workspacePath, phase, featureName);
       return NextResponse.json(state);
+    }
+
+    if (action === 'input') {
+      const success = await workflowService.writeStdin(phase, featureName, text);
+      return NextResponse.json({ success });
     }
 
     if (action === 'run') {

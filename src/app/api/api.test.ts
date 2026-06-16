@@ -76,7 +76,7 @@ describe('Next.js API Routes - E2E Integration Tests', () => {
     const state = await getRes.json();
     
     expect(state.constitutionPhase.status).toBe('awaiting_review');
-    expect(state.features.length).toBe(2);
+    expect(state.features.length).toBe(3);
 
     // 2. POST update active feature
     const postReq = new Request('http://localhost/api/state', {

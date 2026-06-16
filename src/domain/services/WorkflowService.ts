@@ -144,6 +144,10 @@ export class WorkflowService implements WorkflowUseCases {
     return state;
   }
 
+  async writeStdin(phase: WorkflowPhase, featureName: string | null, text: string): Promise<boolean> {
+    return this.agentRunner.writeStdin(phase, featureName, text);
+  }
+
   // Helper methods
   private findPhase(state: WorkflowState, phase: WorkflowPhase, featureName: string | null): PhaseState | null {
     if (phase === 'constitution') {

@@ -17,6 +17,22 @@ const PHASE_COMMANDS: Record<WorkflowPhase, string> = {
 };
 
 export class ProcessAgentRunner implements AgentRunnerPort {
+  private activeProcesses = new Map<string, any>();
+
+  async writeStdin(
+    phase: WorkflowPhase,
+    featureName: string | null,
+    text: string
+  ): Promise<boolean> {
+    const procKey = `${featureName || 'global'}-${phase}`;
+    const child = this.activeProcesses.get(procKey);
+    if (child && child.stdin && child.stdin.writable) {
+      child.stdin.write(text + '\n');
+      return true;
+    }
+    return false;
+  }
+
   async runPhase(
     workspacePath: string,
     phase: WorkflowPhase,
@@ -34,6 +50,8 @@ export class ProcessAgentRunner implements AgentRunnerPort {
     const { cmd, args, stdin } = this.buildSpawnArgs(agentConfig, fullPrompt);
 
     const isWin = process.platform === 'win32';
+
+    const procKey = `${featureName || 'global'}-${phase}`;
 
     return new Promise((resolve) => {
       onData?.(`Running: ${cmd} ${args.join(' ')}\n\n`);
@@ -53,6 +71,8 @@ export class ProcessAgentRunner implements AgentRunnerPort {
             });
           })();
 
+      this.activeProcesses.set(procKey, child);
+
       if (stdin !== undefined && child.stdin) {
         child.stdin.write(stdin);
         child.stdin.end();
@@ -69,6 +89,7 @@ export class ProcessAgentRunner implements AgentRunnerPort {
       });
 
       child.on('close', (code) => {
+        this.activeProcesses.delete(procKey);
         const exitCode = code === null ? -1 : code;
         onData?.(`\nProcess exited with code ${exitCode}\n`);
 
@@ -91,6 +112,7 @@ export class ProcessAgentRunner implements AgentRunnerPort {
       });
 
       child.on('error', (err) => {
+        this.activeProcesses.delete(procKey);
         onData?.(`\nFailed to start process: ${err.message}\n`);
         resolve(-1);
       });

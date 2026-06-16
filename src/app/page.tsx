@@ -1,6 +1,12 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
+
+const TerminalPanel = dynamic(() => import('@/components/TerminalPanel'), {
+  ssr: false,
+});
+
 import {
   WorkflowState,
   WorkflowPhase,
@@ -57,7 +63,8 @@ export default function Dashboard() {
   const [newFeatureName, setNewFeatureName] = useState<string>('');
   const [running, setRunning] = useState<boolean>(false);
   const [showConfig, setShowConfig] = useState<boolean>(false);
-  const [showConsole, setShowConsole] = useState<boolean>(false);
+  const [activeTab, setActiveTab] = useState<'editor' | 'console' | 'terminal'>('editor');
+  const [runningPhase, setRunningPhase] = useState<{ phase: WorkflowPhase; featureName: string | null } | null>(null);
   const [isEditorMaximized, setIsEditorMaximized] = useState<boolean>(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
 
@@ -257,7 +264,8 @@ export default function Dashboard() {
   const handleRunPhase = async (phase: WorkflowPhase, featureName: string | null) => {
     setLogs('');
     setRunning(true);
-    setShowConsole(true);
+    setActiveTab('console');
+    setRunningPhase({ phase, featureName: featureName || state?.activeFeatureName || null });
 
     try {
       const response = await fetch('/api/phase', {
@@ -275,6 +283,7 @@ export default function Dashboard() {
       const reader = response.body?.getReader();
       if (!reader) {
         setRunning(false);
+        setRunningPhase(null);
         return;
       }
 
@@ -310,6 +319,7 @@ export default function Dashboard() {
               }
             }
             setRunning(false);
+            setRunningPhase(null);
             setPrompt('');
           } else if (line.startsWith('event: error')) {
             const dataLine = line.split('\n').find(l => l.startsWith('data: '));
@@ -318,6 +328,7 @@ export default function Dashboard() {
               setLogs(prev => prev + `\nError: ${data.message}\n`);
             }
             setRunning(false);
+            setRunningPhase(null);
           }
         }
       }
@@ -327,6 +338,26 @@ export default function Dashboard() {
     } catch (err: any) {
       setLogs(prev => prev + `\nExecution failed: ${err.message}\n`);
       setRunning(false);
+      setRunningPhase(null);
+    }
+  };
+
+  const handleSendConsoleInput = async (text: string) => {
+    if (!runningPhase) return;
+    setLogs(prev => prev + `${text}\n`);
+    try {
+      await fetch('/api/phase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'input',
+          phase: runningPhase.phase,
+          featureName: runningPhase.featureName,
+          text
+        })
+      });
+    } catch (err) {
+      console.error('Failed to send input:', err);
     }
   };
 
@@ -700,7 +731,7 @@ export default function Dashboard() {
           {/* Split Area: Top (Visual Board), Bottom (Editor or Console) */}
           <div className="flex-1 flex flex-col min-h-0">
             {/* Visualizer Area (Kanban / DAG Map) */}
-            {!(isEditorMaximized && !showConsole) && (
+            {!(isEditorMaximized && activeTab === 'editor') && (
               <div className="flex-1 min-h-[50%] relative">
                 {state ? (
                   viewMode === 'kanban' ? (
@@ -729,29 +760,35 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* Split panel: Content Editor or Terminal log console */}
-            <div className={`flex flex-col min-h-0 bg-white dark:bg-black transition-all duration-300 ${isEditorMaximized && !showConsole ? 'flex-1 h-full' : 'h-[40%] border-t border-zinc-200 dark:border-zinc-800'}`}>
+            {/* Split panel: Content Editor, Terminal log console, or Full Terminal */}
+            <div className={`flex flex-col min-h-0 bg-white dark:bg-black transition-all duration-300 ${isEditorMaximized && activeTab === 'editor' ? 'flex-1 h-full' : 'h-[40%] border-t border-zinc-200 dark:border-zinc-800'}`}>
               {/* Tab Header for lower split */}
               <div className="flex justify-between items-center px-4 py-2 border-b border-zinc-150 dark:border-zinc-900 bg-zinc-50/70 dark:bg-zinc-950/20 shrink-0">
                 <div className="flex gap-4">
                   <button
-                    onClick={() => setShowConsole(false)}
-                    className={`text-xs font-bold tracking-wide transition pb-1 border-b-2 ${!showConsole ? 'text-black dark:text-white border-black dark:border-white' : 'text-zinc-400 border-transparent'}`}
+                    onClick={() => setActiveTab('editor')}
+                    className={`text-xs font-bold tracking-wide transition pb-1 border-b-2 ${activeTab === 'editor' ? 'text-black dark:text-white border-black dark:border-white' : 'text-zinc-400 border-transparent'}`}
                   >
                     MARKDOWN EDITOR
                   </button>
                   <button
-                    onClick={() => setShowConsole(true)}
-                    className={`text-xs font-bold tracking-wide transition pb-1 border-b-2 ${showConsole ? 'text-black dark:text-white border-black dark:border-white' : 'text-zinc-400 border-transparent'}`}
+                    onClick={() => setActiveTab('console')}
+                    className={`text-xs font-bold tracking-wide transition pb-1 border-b-2 ${activeTab === 'console' ? 'text-black dark:text-white border-black dark:border-white' : 'text-zinc-400 border-transparent'}`}
                   >
                     AGENT RUN CONSOLE {running && <span className="inline-block w-2 h-2 rounded-full bg-blue-500 animate-pulse ml-1" />}
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('terminal')}
+                    className={`text-xs font-bold tracking-wide transition pb-1 border-b-2 ${activeTab === 'terminal' ? 'text-black dark:text-white border-black dark:border-white' : 'text-zinc-400 border-transparent'}`}
+                  >
+                    WORKSPACE TERMINAL
                   </button>
                 </div>
               </div>
 
               {/* Lower split content */}
               <div className="flex-1 min-h-0 overflow-hidden">
-                {!showConsole ? (
+                {activeTab === 'editor' && (
                   <div className="h-full p-3 bg-white dark:bg-black">
                     <MarkdownEditor
                       filePath={selectedFile?.path || null}
@@ -764,8 +801,17 @@ export default function Dashboard() {
                       onSelectFile={handleLoadFile}
                     />
                   </div>
-                ) : (
-                  <ConsolePanel logs={logs} onClear={() => setLogs('')} />
+                )}
+                {activeTab === 'console' && (
+                  <ConsolePanel
+                    logs={logs}
+                    onClear={() => setLogs('')}
+                    running={running}
+                    onSendInput={handleSendConsoleInput}
+                  />
+                )}
+                {activeTab === 'terminal' && (
+                  <TerminalPanel />
                 )}
               </div>
             </div>

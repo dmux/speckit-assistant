@@ -51,7 +51,7 @@ describe('FSWorkspaceRepository - Demo Integration Test', () => {
     expect(state.constitutionPhase.content).toContain('Project Constitution - Speckit Demo');
 
     // 2. Assert Features
-    expect(state.features.length).toBe(2);
+    expect(state.features.length).toBe(3);
     
     // Sort features by name for consistent testing
     const features = [...state.features].sort((a, b) => a.name.localeCompare(b.name));

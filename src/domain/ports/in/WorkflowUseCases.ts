@@ -18,4 +18,5 @@ export interface WorkflowUseCases {
   toggleTask(workspacePath: string, featureName: string, lineIndex: number, checked: boolean): Promise<WorkflowState>;
   readFile(workspacePath: string, filePath: string): Promise<string>;
   writeFile(workspacePath: string, filePath: string, content: string): Promise<WorkflowState>;
+  writeStdin(phase: WorkflowPhase, featureName: string | null, text: string): Promise<boolean>;
 }

@@ -9,4 +9,9 @@ export interface AgentRunnerPort {
     userPrompt?: string,
     onData?: (text: string) => void
   ): Promise<number>;
+  writeStdin(
+    phase: WorkflowPhase,
+    featureName: string | null,
+    text: string
+  ): Promise<boolean>;
 }
