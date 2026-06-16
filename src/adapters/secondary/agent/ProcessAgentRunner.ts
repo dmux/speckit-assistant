@@ -73,9 +73,14 @@ export class ProcessAgentRunner implements AgentRunnerPort {
 
       this.activeProcesses.set(procKey, child);
 
-      if (stdin !== undefined && child.stdin) {
-        child.stdin.write(stdin);
-        child.stdin.end();
+      if (child.stdin) {
+        if (stdin !== undefined) {
+          child.stdin.write(stdin);
+        }
+        // End stdin for standard single-shot CLIs to prevent 3s warning/delay
+        if (agentConfig.agentType !== 'custom') {
+          child.stdin.end();
+        }
       }
 
       child.stdout.on('data', (data) => {
