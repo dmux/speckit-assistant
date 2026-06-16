@@ -1,6 +1,6 @@
 {
   "name": "speckit-assistant",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Visual orchestrator for Spec-Driven Development (SDD) — Next.js, ReactFlow and Hexagonal Architecture",
   "main": "dist/index.js",
   "bin": {
@@ -27,6 +27,14 @@
   ],
   "author": "",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dmux/speckit-assistant.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dmux/speckit-assistant/issues"
+  },
+  "homepage": "https://github.com/dmux/speckit-assistant#readme",
   "dependencies": {
     "@xyflow/react": "^12.3.5",
     "chokidar": "^5.0.0",

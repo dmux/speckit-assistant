@@ -70,10 +70,10 @@ SpecKit Assistant acts as the **Visual Dashboard** and **Command-Line Interface*
 ## 🖥️ User Interface Screenshots
 
 ### Kanban Board View (Interactive state progression)
-![Kanban Board View](docs/screenshot1.png)
+![Kanban Board View](https://raw.githubusercontent.com/dmux/speckit-assistant/main/docs/screenshot1.png)
 
 ### ReactFlow DAG Map View (Feature dependency tracking)
-![ReactFlow DAG Map View](docs/screenshot2.png)
+![ReactFlow DAG Map View](https://raw.githubusercontent.com/dmux/speckit-assistant/main/docs/screenshot2.png)
 
 ---
 
