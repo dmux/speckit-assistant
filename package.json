@@ -1,0 +1,53 @@
+{
+  "name": "speckit-assistant",
+  "version": "0.1.1",
+  "description": "Visual orchestrator for Spec-Driven Development (SDD) — Next.js, ReactFlow and Hexagonal Architecture",
+  "main": "dist/index.js",
+  "bin": {
+    "speckit-assistant": "./bin/bin/cli.js"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build && tsc -p tsconfig.bin.json",
+    "start": "next start",
+    "test": "vitest run",
+    "prepublishOnly": "pnpm run build"
+  },
+  "files": [
+    "bin",
+    ".next",
+    "next.config.ts"
+  ],
+  "keywords": [
+    "sdd",
+    "speckit",
+    "nextjs",
+    "reactflow",
+    "hexagonal-architecture"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@xyflow/react": "^12.3.5",
+    "chokidar": "^5.0.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.468.0",
+    "next": "^15.1.0",
+    "open": "^10.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^2.5.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.9",
+    "@types/react": "^19.0.1",
+    "@types/react-dom": "^19.0.2",
+    "@vitest/coverage-v8": "^2.1.9",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.16",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

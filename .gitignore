@@ -1,0 +1,49 @@
+# Dependencies
+/node_modules
+/.pnpm-store
+/jspm_packages
+
+# Next.js Build Outputs
+/.next/
+/out/
+
+# TypeScript/CLI Build Outputs
+/bin/adapters/
+/bin/app/
+/bin/bin/
+/bin/domain/
+/bin/cli.js
+
+# Testing and Coverage
+/coverage/
+/.nyc_output
+
+# Debug and Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+lerna-debug.log*
+
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Environments and Configurations
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# SpecKit Assistant Runtime & Local States
+.specify/.runtime/
+.workspace-config.json
+.speckit-assistant-config.json
+tmp-test-workspace/
+tmp-api-test-workspace/
