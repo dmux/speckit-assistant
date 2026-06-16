@@ -19,8 +19,8 @@ class TerminalManager {
       const isWin = process.platform === 'win32';
       const shell = isWin ? 'cmd.exe' : (process.env.SHELL || '/bin/bash');
 
-      // Use login shell flags if appropriate
-      const args = isWin ? [] : ['-l'];
+      // Use login and interactive shell flags
+      const args = isWin ? [] : ['-l', '-i'];
 
       this.activeProcess = spawn(shell, args, {
         cwd: this.workspacePath,
