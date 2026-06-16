@@ -1,6 +1,6 @@
 {
   "name": "speckit-assistant",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Visual orchestrator for Spec-Driven Development (SDD) — Next.js, ReactFlow and Hexagonal Architecture",
   "main": "dist/index.js",
   "bin": {
@@ -16,7 +16,7 @@
   "files": [
     "bin",
     ".next",
-    "next.config.ts"
+    "next.config.mjs"
   ],
   "keywords": [
     "sdd",
