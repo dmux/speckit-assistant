@@ -34,6 +34,17 @@ export const TerminalPanel: React.FC = () => {
 
     xtermRef.current = term;
 
+    // Keep the backend PTY sized to the visible terminal so line wrapping and
+    // full-screen prompts (e.g. interactive agents) render correctly.
+    const syncSize = () => {
+      fetch('/api/terminal/resize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cols: term.cols, rows: term.rows })
+      }).catch(() => {});
+    };
+    syncSize();
+
     // Connect to Server-Sent Events output stream
     const eventSource = new EventSource('/api/terminal/stream');
     eventSource.onmessage = (event) => {
@@ -56,21 +67,22 @@ export const TerminalPanel: React.FC = () => {
       }).catch(err => console.error('Failed to send input:', err));
     });
 
-    // Handle window resize event
-    const handleResize = () => {
+    // Handle container resize event via ResizeObserver so it resizes instantly when maximized
+    const resizeObserver = new ResizeObserver(() => {
       try {
         fitAddon.fit();
+        syncSize();
       } catch {
-        // ignore resize errors if container is hidden
+        // ignore when hidden
       }
-    };
-    window.addEventListener('resize', handleResize);
+    });
+    resizeObserver.observe(containerRef.current);
 
     return () => {
+      resizeObserver.disconnect();
       term.dispose();
       eventSource.close();
       onDataDisposable.dispose();
-      window.removeEventListener('resize', handleResize);
     };
   }, []);
 

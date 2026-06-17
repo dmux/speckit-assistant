@@ -1,7 +1,17 @@
 import { WorkflowUseCases } from '../ports/in/WorkflowUseCases';
 import { WorkspaceRepositoryPort } from '../ports/out/WorkspaceRepositoryPort';
 import { AgentRunnerPort } from '../ports/out/AgentRunnerPort';
-import { WorkflowState, WorkflowPhase, AgentConfig, FeatureWorkflow, PhaseState } from '../models/types';
+import {
+  WorkflowState,
+  WorkflowPhase,
+  AgentConfig,
+  FeatureWorkflow,
+  PhaseState,
+  PersonaConfig,
+  PersonaId,
+  PersonaRunStatus,
+} from '../models/types';
+import { orderPersonas, personaReportPath } from '../models/personas';
 
 const FEATURE_PHASES: WorkflowPhase[] = [
   'specification',
@@ -52,7 +62,8 @@ export class WorkflowService implements WorkflowUseCases {
     featureName: string | null,
     agentConfig: AgentConfig,
     userPrompt?: string,
-    onData?: (text: string) => void
+    onData?: (text: string) => void,
+    personas?: PersonaConfig[]
   ): Promise<WorkflowState> {
     const state = await this.workspaceRepo.getWorkflowState(workspacePath);
     const targetFeature = featureName || state.activeFeatureName;
@@ -73,12 +84,23 @@ export class WorkflowService implements WorkflowUseCases {
 
       // Re-read state in case files changed on disk during run
       const freshState = await this.workspaceRepo.getWorkflowState(workspacePath);
-      if (exitCode === 0) {
-        this.setPhaseStatus(freshState, phase, targetFeature, 'awaiting_review');
-      } else {
+
+      if (exitCode !== 0) {
         this.setPhaseStatus(freshState, phase, targetFeature, 'idle');
+        await this.workspaceRepo.saveWorkflowState(workspacePath, freshState);
+        return freshState;
       }
-      
+
+      // Implementation: if a review gate is configured, the personas govern the
+      // final status (only reaching awaiting_review after Tech Lead signs off).
+      const enabledPersonas = (personas ?? []).filter(p => p.enabled);
+      if (phase === 'implementation' && targetFeature && enabledPersonas.length > 0) {
+        this.setPhaseStatus(freshState, phase, targetFeature, 'running');
+        await this.workspaceRepo.saveWorkflowState(workspacePath, freshState);
+        return this.runImplementationGate(workspacePath, targetFeature, agentConfig, personas!, onData);
+      }
+
+      this.setPhaseStatus(freshState, phase, targetFeature, 'awaiting_review');
       // Check if tasks are completed to auto-complete implementation
       if (phase === 'implementation') {
         await this.checkImplementationAutoReview(workspacePath, freshState, targetFeature);
@@ -92,6 +114,85 @@ export class WorkflowService implements WorkflowUseCases {
       await this.workspaceRepo.saveWorkflowState(workspacePath, freshState);
       throw err;
     }
+  }
+
+  // Runs the implementation review gate: enabled personas execute sequentially
+  // (Tech Lead last). The gate stops at the first persona that fails, leaving
+  // the implementation phase 'running' (blocked). Only when every persona passes
+  // does the phase advance to 'awaiting_review' for human approval.
+  async runImplementationGate(
+    workspacePath: string,
+    featureName: string,
+    agentConfig: AgentConfig,
+    personas: PersonaConfig[],
+    onData?: (text: string) => void
+  ): Promise<WorkflowState> {
+    const enabled = orderPersonas(personas.filter(p => p.enabled));
+
+    const state = await this.workspaceRepo.getWorkflowState(workspacePath);
+    const implPhase = this.findPhase(state, 'implementation', featureName);
+    if (!implPhase) return state;
+
+    implPhase.status = 'running';
+    implPhase.personas = enabled.map(p => ({
+      id: p.id,
+      status: 'idle' as PersonaRunStatus,
+      reportPath: personaReportPath(featureName, p.id),
+    }));
+    await this.workspaceRepo.saveWorkflowState(workspacePath, state);
+
+    for (const persona of enabled) {
+      const ps = implPhase.personas!.find(x => x.id === persona.id)!;
+      ps.status = 'running';
+      await this.workspaceRepo.saveWorkflowState(workspacePath, state);
+
+      onData?.(`\r\n\x1b[36m=== Persona: ${persona.label} (${persona.command}) ===\x1b[0m\r\n`);
+
+      const exitCode = await this.agentRunner.runPersona(
+        workspacePath,
+        featureName,
+        persona,
+        agentConfig,
+        onData
+      );
+
+      const verdict = await this.resolvePersonaVerdict(workspacePath, featureName, persona.id, exitCode);
+      ps.status = verdict;
+      await this.workspaceRepo.saveWorkflowState(workspacePath, state);
+
+      if (verdict === 'failed') {
+        onData?.(`\r\n\x1b[31m✗ ${persona.label} bloqueou o gate — implementação permanece em revisão.\x1b[0m\r\n`);
+        return state;
+      }
+      onData?.(`\r\n\x1b[32m✓ ${persona.label} passou.\x1b[0m\r\n`);
+    }
+
+    implPhase.status = 'awaiting_review';
+    await this.workspaceRepo.saveWorkflowState(workspacePath, state);
+    onData?.(`\r\n\x1b[32m✓ Review gate completo — pronto para aprovação.\x1b[0m\r\n`);
+    return state;
+  }
+
+  // A persona's verdict is read from its report (specs/<feature>/reviews/<id>.md):
+  // an explicit "VERDICT: PASS|FAIL" marker wins; otherwise we fall back to the
+  // process exit code. This is robust across heterogeneous agent CLIs that may
+  // not control their exit code reliably.
+  private async resolvePersonaVerdict(
+    workspacePath: string,
+    featureName: string,
+    id: PersonaId,
+    exitCode: number
+  ): Promise<PersonaRunStatus> {
+    let report = '';
+    try {
+      report = await this.workspaceRepo.readFile(workspacePath, personaReportPath(featureName, id));
+    } catch {
+      report = '';
+    }
+    const text = report.toUpperCase();
+    if (/VERDICT:\s*FAIL/.test(text)) return 'failed';
+    if (/VERDICT:\s*PASS/.test(text)) return 'passed';
+    return exitCode === 0 ? 'passed' : 'failed';
   }
 
   async approvePhase(workspacePath: string, phase: WorkflowPhase, featureName: string | null): Promise<WorkflowState> {
@@ -144,8 +245,16 @@ export class WorkflowService implements WorkflowUseCases {
     return state;
   }
 
-  async writeStdin(phase: WorkflowPhase, featureName: string | null, text: string): Promise<boolean> {
-    return this.agentRunner.writeStdin(phase, featureName, text);
+  async writeStdin(phase: WorkflowPhase, featureName: string | null, text: string, personaId?: PersonaId): Promise<boolean> {
+    return this.agentRunner.writeStdin(phase, featureName, text, personaId);
+  }
+
+  async resize(phase: WorkflowPhase, featureName: string | null, cols: number, rows: number, personaId?: PersonaId): Promise<boolean> {
+    return this.agentRunner.resize(phase, featureName, cols, rows, personaId);
+  }
+
+  async stop(phase: WorkflowPhase, featureName: string | null, personaId?: PersonaId): Promise<boolean> {
+    return this.agentRunner.stop(phase, featureName, personaId);
   }
 
   // Helper methods

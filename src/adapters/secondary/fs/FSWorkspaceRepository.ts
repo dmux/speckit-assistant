@@ -29,7 +29,12 @@ export class FSWorkspaceRepository implements WorkspaceRepositoryPort {
     } else {
       state.constitutionPhase.filePath = null;
       state.constitutionPhase.content = null;
-      state.constitutionPhase.status = 'idle';
+      // Don't clobber explicit user/runtime states when no file is on disk:
+      // 'running' (agent still generating) and 'approved' (a stored user decision,
+      // e.g. advanced via Kanban drag) must survive reconciliation.
+      if (!this.isUserState(state.constitutionPhase.status)) {
+        state.constitutionPhase.status = 'idle';
+      }
     }
 
     // 2. Reconcile Features in specs/
@@ -72,7 +77,9 @@ export class FSWorkspaceRepository implements WorkspaceRepositoryPort {
           } else {
             ps.filePath = null;
             ps.content = null;
-            ps.status = 'idle';
+            if (!this.isUserState(ps.status)) {
+              ps.status = 'idle';
+            }
           }
         }
 
@@ -91,7 +98,9 @@ export class FSWorkspaceRepository implements WorkspaceRepositoryPort {
         } else {
           clarifyPhase.filePath = null;
           clarifyPhase.content = null;
-          clarifyPhase.status = 'idle';
+          if (!this.isUserState(clarifyPhase.status)) {
+            clarifyPhase.status = 'idle';
+          }
         }
 
         // Implementation phase doesn't have its own file, but we can resolve its status.
@@ -101,6 +110,23 @@ export class FSWorkspaceRepository implements WorkspaceRepositoryPort {
         // Make sure its filePath is null (since there is no implementation.md file)
         implPhase.filePath = null;
         implPhase.content = null;
+
+        // Reconcile review-gate personas against their report files. Statuses
+        // saved by the gate are kept; this is a safety net that also reflects a
+        // report written/edited out of band. Never downgrade a 'running' persona.
+        if (implPhase.personas) {
+          for (const persona of implPhase.personas) {
+            const reportFp = path.join(specsDir, feature.name, 'reviews', `${persona.id}.md`);
+            if (fs.existsSync(reportFp)) {
+              persona.reportPath = path.join('specs', feature.name, 'reviews', `${persona.id}.md`);
+              if (persona.status !== 'running') {
+                const verdict = fs.readFileSync(reportFp, 'utf-8').toUpperCase();
+                if (/VERDICT:\s*FAIL/.test(verdict)) persona.status = 'failed';
+                else if (/VERDICT:\s*PASS/.test(verdict)) persona.status = 'passed';
+              }
+            }
+          }
+        }
       }
     } else {
       state.features = [];
@@ -133,7 +159,9 @@ export class FSWorkspaceRepository implements WorkspaceRepositoryPort {
         phases: f.phases.map(p => ({
           phase: p.phase,
           status: p.status,
-          stale: p.stale
+          stale: p.stale,
+          // Persist the implementation review-gate persona statuses.
+          ...(p.personas ? { personas: p.personas.map(ps => ({ id: ps.id, status: ps.status })) } : {})
         }))
       })),
       activeFeatureName: state.activeFeatureName
@@ -248,6 +276,10 @@ export class FSWorkspaceRepository implements WorkspaceRepositoryPort {
     };
   }
 
+  private isUserState(status: PhaseStatus): boolean {
+    return status === 'running' || status === 'approved';
+  }
+
   private loadStateFile(workspacePath: string): WorkflowState | null {
     const statePath = path.join(workspacePath, '.specify', '.runtime', 'workflow-state.json');
     if (!fs.existsSync(statePath)) {
@@ -272,7 +304,10 @@ export class FSWorkspaceRepository implements WorkspaceRepositoryPort {
               status: savedPhase?.status || 'idle',
               stale: savedPhase?.stale || false,
               filePath: null,
-              content: null
+              content: null,
+              ...(Array.isArray(savedPhase?.personas)
+                ? { personas: savedPhase.personas.map((ps: any) => ({ id: ps.id, status: ps.status || 'idle' })) }
+                : {})
             };
           })
         }));

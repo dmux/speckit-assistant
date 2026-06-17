@@ -1,0 +1,30 @@
+schema_version: "1.0"
+
+extension:
+  id: "personas"
+  name: "Spec Kit Review Personas"
+  version: "1.0.0"
+  description: "Review-gate sub-agents for the implementation phase: QA, Code Review, Security and Tech Lead."
+  author: "speckit-assistant"
+  repository: "https://github.com/dmux/speckit-assistant"
+  license: "MIT"
+
+requires:
+  speckit_version: ">=0.1.0"
+
+provides:
+  commands:
+    - name: "speckit.review.qa"
+      file: "commands/qa.md"
+      description: "QA persona: verifies the implementation against the spec and tasks."
+    - name: "speckit.review.code"
+      file: "commands/code.md"
+      description: "Code Review persona: reviews code quality, structure and maintainability."
+    - name: "speckit.review.security"
+      file: "commands/security.md"
+      description: "Security persona: audits the change for security issues."
+    - name: "speckit.review.techlead"
+      file: "commands/techlead.md"
+      description: "Tech Lead persona: aggregates the other reviews and signs off."
+
+tags: ["review", "quality", "security", "process"]

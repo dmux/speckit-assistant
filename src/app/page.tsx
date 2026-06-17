@@ -12,12 +12,18 @@ import {
   WorkflowPhase,
   AgentConfig,
   AgentType,
-  PhaseStatus
+  PhaseStatus,
+  PersonaConfig,
+  PersonaId,
+  PhaseState
 } from '@/domain/models/types';
+import { DEFAULT_PERSONAS } from '@/domain/models/personas';
 import KanbanBoard from '@/components/KanbanBoard';
 import DagMap from '@/components/DagMap';
 import MarkdownEditor from '@/components/MarkdownEditor';
-import ConsolePanel from '@/components/ConsolePanel';
+import AgentConsole, { type AgentConsoleHandle } from '@/components/AgentConsole';
+import { PersonaEditorModal } from '@/components/PersonaEditorModal';
+import { HumanReviewModal } from '@/components/HumanReviewModal';
 import {
   Sun,
   Moon,
@@ -32,7 +38,10 @@ import {
   ChevronLeft,
   Folder,
   Settings,
-  Sparkles
+  Sparkles,
+  Maximize2,
+  Minimize2,
+  ShieldCheck
 } from 'lucide-react';
 
 const PHASE_LABELS: Record<WorkflowPhase, string> = {
@@ -49,7 +58,7 @@ const PHASE_LABELS: Record<WorkflowPhase, string> = {
 
 export default function Dashboard() {
   const [state, setState] = useState<WorkflowState | null>(null);
-  const [logs, setLogs] = useState<string>('');
+  const agentConsoleRef = React.useRef<AgentConsoleHandle | null>(null);
   const [selectedFile, setSelectedFile] = useState<{ path: string; content: string } | null>(null);
   
   const [viewMode, setViewMode] = useState<'kanban' | 'dag'>('kanban');
@@ -60,6 +69,9 @@ export default function Dashboard() {
     agentPath: '',
   });
   const [prompt, setPrompt] = useState<string>('');
+  const [personaConfigs, setPersonaConfigs] = useState<PersonaConfig[]>(DEFAULT_PERSONAS);
+  const [editingPersona, setEditingPersona] = useState<PersonaConfig | null>(null);
+  const [auditingFeature, setAuditingFeature] = useState<{ name: string; phaseState: PhaseState } | null>(null);
   const [newFeatureName, setNewFeatureName] = useState<string>('');
   const [running, setRunning] = useState<boolean>(false);
   const [showConfig, setShowConfig] = useState<boolean>(false);
@@ -96,6 +108,7 @@ export default function Dashboard() {
   // Initialize
   useEffect(() => {
     fetchState();
+    fetchPersonas();
     
     // Default to dark mode
     const root = window.document.documentElement;
@@ -131,6 +144,34 @@ export default function Dashboard() {
       setState(data);
     } catch (err) {
       console.error('Failed to fetch state:', err);
+    }
+  };
+
+  const fetchPersonas = async () => {
+    try {
+      const res = await fetch('/api/personas');
+      if (res.ok) {
+        const data = await res.json();
+        setPersonaConfigs(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch personas:', err);
+    }
+  };
+
+  const handleSavePersona = async (updated: PersonaConfig) => {
+    const next = personaConfigs.map(p => p.id === updated.id ? updated : p);
+    setPersonaConfigs(next);
+    setEditingPersona(null);
+
+    try {
+      await fetch('/api/personas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(next)
+      });
+    } catch (err) {
+      console.error('Failed to save persona config:', err);
     }
   };
 
@@ -261,8 +302,70 @@ export default function Dashboard() {
     }
   };
 
+  // Consumes the SSE stream from a phase 'run' / 'run-gate' request, piping log
+  // chunks to the xterm console and applying the final state.
+  const consumePhaseStream = async (
+    response: Response,
+    phase: WorkflowPhase,
+    featureName: string | null
+  ) => {
+    const reader = response.body?.getReader();
+    if (!reader) {
+      setRunning(false);
+      setRunningPhase(null);
+      return;
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value);
+      const lines = buffer.split('\n\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.startsWith('event: log')) {
+          const dataLine = line.split('\n').find(l => l.startsWith('data: '));
+          if (dataLine) {
+            const data = JSON.parse(dataLine.substring(6));
+            agentConsoleRef.current?.write(data.text);
+          }
+        } else if (line.startsWith('event: done')) {
+          const dataLine = line.split('\n').find(l => l.startsWith('data: '));
+          if (dataLine) {
+            const data = JSON.parse(dataLine.substring(6));
+            setState(data.state);
+            const targetFeature = featureName || data.state.activeFeatureName;
+            const feat = data.state.features.find((f: any) => f.name === targetFeature);
+            const activePhase = feat?.phases.find((p: any) => p.phase === phase);
+            if (activePhase?.filePath) {
+              handleLoadFile(activePhase.filePath);
+            }
+          }
+          setRunning(false);
+          setRunningPhase(null);
+          setPrompt('');
+        } else if (line.startsWith('event: error')) {
+          const dataLine = line.split('\n').find(l => l.startsWith('data: '));
+          if (dataLine) {
+            const data = JSON.parse(dataLine.substring(6));
+            agentConsoleRef.current?.write(`\r\n\x1b[31mError: ${data.message}\x1b[0m\r\n`);
+          }
+          setRunning(false);
+          setRunningPhase(null);
+        }
+      }
+    }
+
+    fetchState();
+  };
+
   const handleRunPhase = async (phase: WorkflowPhase, featureName: string | null) => {
-    setLogs('');
+    agentConsoleRef.current?.clear();
     setRunning(true);
     setActiveTab('console');
     setRunningPhase({ phase, featureName: featureName || state?.activeFeatureName || null });
@@ -276,88 +379,112 @@ export default function Dashboard() {
           phase,
           featureName: featureName || state?.activeFeatureName,
           agentConfig,
-          prompt
+          prompt,
+          // The implementation phase runs the persona review gate after the
+          // /speckit.implement step. Other phases ignore this field.
+          ...(phase === 'implementation' ? { personas: personaConfigs } : {})
         })
       });
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        setRunning(false);
-        setRunningPhase(null);
-        return;
-      }
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value);
-        const lines = buffer.split('\n\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('event: log')) {
-            const dataLine = line.split('\n').find(l => l.startsWith('data: '));
-            if (dataLine) {
-              const data = JSON.parse(dataLine.substring(6));
-              setLogs(prev => prev + data.text);
-            }
-          } else if (line.startsWith('event: done')) {
-            const dataLine = line.split('\n').find(l => l.startsWith('data: '));
-            if (dataLine) {
-              const data = JSON.parse(dataLine.substring(6));
-              setState(data.state);
-              // Auto-select and reload files if they were generated
-              const targetFeature = featureName || data.state.activeFeatureName;
-              const feat = data.state.features.find((f: any) => f.name === targetFeature);
-              const activePhase = feat?.phases.find((p: any) => p.phase === phase);
-              if (activePhase?.filePath) {
-                handleLoadFile(activePhase.filePath);
-              }
-            }
-            setRunning(false);
-            setRunningPhase(null);
-            setPrompt('');
-          } else if (line.startsWith('event: error')) {
-            const dataLine = line.split('\n').find(l => l.startsWith('data: '));
-            if (dataLine) {
-              const data = JSON.parse(dataLine.substring(6));
-              setLogs(prev => prev + `\nError: ${data.message}\n`);
-            }
-            setRunning(false);
-            setRunningPhase(null);
-          }
-        }
-      }
-      
-      // Double check state sync on complete
-      fetchState();
+      await consumePhaseStream(response, phase, featureName);
     } catch (err: any) {
-      setLogs(prev => prev + `\nExecution failed: ${err.message}\n`);
+      agentConsoleRef.current?.write(`\r\n\x1b[31mExecution failed: ${err.message}\x1b[0m\r\n`);
       setRunning(false);
       setRunningPhase(null);
     }
   };
 
-  const handleSendConsoleInput = async (text: string) => {
-    if (!runningPhase) return;
-    setLogs(prev => prev + `${text}\n`);
+  // Re-runs only the implementation review gate (personas), without re-running
+  // /speckit.implement.
+  const handleRerunGate = async (featureName: string | null) => {
+    const feature = featureName || state?.activeFeatureName || null;
+    agentConsoleRef.current?.clear();
+    setRunning(true);
+    setActiveTab('console');
+    setRunningPhase({ phase: 'implementation', featureName: feature });
+
     try {
+      const response = await fetch('/api/phase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'run-gate',
+          phase: 'implementation',
+          featureName: feature,
+          agentConfig,
+          personas: personaConfigs
+        })
+      });
+      await consumePhaseStream(response, 'implementation', feature);
+    } catch (err: any) {
+      agentConsoleRef.current?.write(`\r\n\x1b[31mExecution failed: ${err.message}\x1b[0m\r\n`);
+      setRunning(false);
+      setRunningPhase(null);
+    }
+  };
+
+  // The persona currently executing (if any), so terminal input/resize is routed
+  // to its PTY rather than the implement step's.
+  const activePersonaId = (): PersonaId | undefined => {
+    if (runningPhase?.phase !== 'implementation') return undefined;
+    const feat = state?.features.find(f => f.name === runningPhase.featureName);
+    const impl = feat?.phases.find(p => p.phase === 'implementation');
+    return impl?.personas?.find(p => p.status === 'running')?.id;
+  };
+
+  // Forward raw terminal keystrokes to the running agent's PTY so interactive
+  // prompts (e.g. the clarify Q&A picker) can be navigated with arrow keys.
+  const handleAgentInput = (data: string) => {
+    if (!runningPhase) return;
+    fetch('/api/phase', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'input',
+        phase: runningPhase.phase,
+        featureName: runningPhase.featureName,
+        text: data,
+        personaId: activePersonaId()
+      })
+    }).catch((err) => console.error('Failed to send input:', err));
+  };
+
+  // Keep the backend PTY sized to the visible terminal so wrapping and
+  // full-screen prompts render correctly.
+  const handleAgentResize = (cols: number, rows: number) => {
+    if (!runningPhase) return;
+    fetch('/api/phase', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'resize',
+        phase: runningPhase.phase,
+        featureName: runningPhase.featureName,
+        cols,
+        rows,
+        personaId: activePersonaId()
+      })
+    }).catch(() => {});
+  };
+
+  const handleStopPhase = async (phase: WorkflowPhase, featureName: string | null) => {
+    try {
+      const targetFeature = featureName || state?.activeFeatureName || null;
+      const personaId = activePersonaId();
       await fetch('/api/phase', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'input',
-          phase: runningPhase.phase,
-          featureName: runningPhase.featureName,
-          text
+          action: 'stop',
+          phase,
+          featureName: targetFeature,
+          personaId
         })
       });
+      setRunning(false);
+      setRunningPhase(null);
+      fetchState();
     } catch (err) {
-      console.error('Failed to send input:', err);
+      console.error('Failed to stop phase:', err);
     }
   };
 
@@ -536,6 +663,29 @@ export default function Dashboard() {
             <Settings size={14} />
           </button>
 
+          {/* Review Portal / Audit Trigger */}
+          <button
+            onClick={() => {
+              const activeFeatureName = state?.activeFeatureName;
+              const activeFeature = state?.features.find(f => f.name === activeFeatureName);
+              const implPhase = activeFeature?.phases.find(p => p.phase === 'implementation') || {
+                phase: 'implementation',
+                status: 'idle',
+                filePath: null,
+                content: null
+              };
+              setAuditingFeature({
+                name: activeFeatureName || 'Workspace',
+                phaseState: implPhase
+              });
+            }}
+            className="p-2 border border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition hover:bg-zinc-100 dark:hover:bg-zinc-900 flex items-center gap-1.5 text-xs font-semibold"
+            title="Open Human Review Portal"
+          >
+            <ShieldCheck size={14} className="text-blue-500" />
+            <span className="hidden sm:inline">Review Portal</span>
+          </button>
+
           {/* Theme Switcher */}
           <button
             onClick={handleToggleTheme}
@@ -664,13 +814,26 @@ export default function Dashboard() {
                   disabled={running || !state}
                   className="w-full h-16 p-2 text-xs bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-md outline-none resize-none disabled:opacity-50"
                 />
-                <button
-                  onClick={() => handleRunPhase(activeExec.phase, null)}
-                  disabled={running || !state}
-                  className="w-full mt-2 py-1.5 bg-black dark:bg-white text-white dark:text-black rounded-md text-xs font-semibold hover:opacity-90 transition flex items-center justify-center gap-1 disabled:opacity-50"
-                >
-                  <Play size={10} fill="currentColor" /> Run {activeExec.label}
-                </button>
+                {running ? (
+                  <button
+                    onClick={() => {
+                      if (runningPhase) {
+                        handleStopPhase(runningPhase.phase, runningPhase.featureName);
+                      }
+                    }}
+                    className="w-full mt-2 py-1.5 bg-red-650 hover:bg-red-700 text-white rounded-md text-xs font-semibold transition flex items-center justify-center gap-1"
+                  >
+                    <X size={10} /> Stop Execution
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleRunPhase(activeExec.phase, null)}
+                    disabled={!state}
+                    className="w-full mt-2 py-1.5 bg-black dark:bg-white text-white dark:text-black rounded-md text-xs font-semibold hover:opacity-90 transition flex items-center justify-center gap-1 disabled:opacity-50"
+                  >
+                    <Play size={10} fill="currentColor" /> Run {activeExec.label}
+                  </button>
+                )}
               </div>
             </>
           )}
@@ -725,13 +888,78 @@ export default function Dashboard() {
                   />
                 </div>
               </div>
+
+              {/* Implementation review gate: persona sub-agents run sequentially after /speckit.implement */}
+              <div className="mt-4 pt-4 border-t border-zinc-200 dark:border-zinc-800">
+                <div className="flex items-center justify-between mb-3">
+                  <label className="block text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                    Review Gate Agent Personas (runs in order, Tech Lead signs off)
+                  </label>
+                  <span className="text-[10px] text-zinc-500 font-semibold bg-zinc-100 dark:bg-zinc-900 px-2 py-0.5 rounded border border-zinc-200 dark:border-zinc-800">
+                    {personaConfigs.filter(p => p.enabled).length}/{personaConfigs.length} enabled
+                  </span>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {personaConfigs.map((p, idx) => (
+                    <div
+                      key={p.id}
+                      className="flex flex-col justify-between p-3.5 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg hover:border-zinc-300 dark:hover:border-zinc-700 transition"
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="flex items-center gap-2.5">
+                          <input
+                            type="checkbox"
+                            checked={p.enabled}
+                            onChange={async (e) => {
+                              const next = [...personaConfigs];
+                              next[idx] = { ...p, enabled: e.target.checked };
+                              setPersonaConfigs(next);
+                              try {
+                                await fetch('/api/personas', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify(next)
+                                });
+                              } catch (err) {
+                                console.error('Failed to save persona enable state:', err);
+                              }
+                            }}
+                            className="w-4 h-4 rounded border-zinc-300 dark:border-zinc-800 text-blue-500 focus:ring-0 cursor-pointer"
+                          />
+                          <div>
+                            <span className="text-xs font-bold text-zinc-800 dark:text-zinc-200">{p.label}</span>
+                            <span className="ml-1.5 text-[9px] font-mono px-1 py-0.5 rounded bg-zinc-200/50 dark:bg-zinc-900 text-zinc-500 uppercase font-semibold">{p.id}</span>
+                          </div>
+                        </div>
+                        
+                        <button
+                          onClick={() => setEditingPersona(p)}
+                          className="px-2 py-0.5 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-900 text-[10px] font-bold rounded text-blue-500 dark:text-blue-400 transition"
+                        >
+                          Configure
+                        </button>
+                      </div>
+
+                      <p className="text-[10px] text-zinc-500 dark:text-zinc-400 line-clamp-1 mb-2 font-medium">
+                        {p.description || 'No description provided.'}
+                      </p>
+
+                      <div className="flex justify-between items-center text-[9px] text-zinc-500 font-mono">
+                        <span className="truncate max-w-[150px] font-semibold">{p.command}</span>
+                        <span className="shrink-0 px-1 py-0.25 rounded bg-zinc-200 dark:bg-zinc-900 font-semibold">{p.model || 'N/A'}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
 
           {/* Split Area: Top (Visual Board), Bottom (Editor or Console) */}
           <div className="flex-1 flex flex-col min-h-0">
             {/* Visualizer Area (Kanban / DAG Map) */}
-            {!(isEditorMaximized && activeTab === 'editor') && (
+            {!isEditorMaximized && (
               <div className="flex-1 min-h-[50%] relative">
                 {state ? (
                   viewMode === 'kanban' ? (
@@ -744,6 +972,9 @@ export default function Dashboard() {
                       onDeleteFeature={handleDeleteFeature}
                       onSelectPhaseFile={handleLoadFile}
                       onCardDrop={handleCardDrop}
+                      onRerunGate={handleRerunGate}
+                      onOpenReview={(name, phaseState) => setAuditingFeature({ name, phaseState })}
+                      onStopPhase={handleStopPhase}
                     />
                   ) : (
                     <DagMap
@@ -761,7 +992,7 @@ export default function Dashboard() {
             )}
 
             {/* Split panel: Content Editor, Terminal log console, or Full Terminal */}
-            <div className={`flex flex-col min-h-0 bg-white dark:bg-black transition-all duration-300 ${isEditorMaximized && activeTab === 'editor' ? 'flex-1 h-full' : 'h-[40%] border-t border-zinc-200 dark:border-zinc-800'}`}>
+            <div className={`flex flex-col min-h-0 bg-white dark:bg-black transition-all duration-300 ${isEditorMaximized ? 'flex-1 h-full' : 'h-[40%] border-t border-zinc-200 dark:border-zinc-800'}`}>
               {/* Tab Header for lower split */}
               <div className="flex justify-between items-center px-4 py-2 border-b border-zinc-150 dark:border-zinc-900 bg-zinc-50/70 dark:bg-zinc-950/20 shrink-0">
                 <div className="flex gap-4">
@@ -784,6 +1015,13 @@ export default function Dashboard() {
                     WORKSPACE TERMINAL
                   </button>
                 </div>
+                <button
+                  onClick={() => setIsEditorMaximized(!isEditorMaximized)}
+                  className="p-1.5 rounded text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition"
+                  title={isEditorMaximized ? "Restore Layout" : "Maximize Panel"}
+                >
+                  {isEditorMaximized ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+                </button>
               </div>
 
               {/* Lower split content */}
@@ -802,14 +1040,17 @@ export default function Dashboard() {
                     />
                   </div>
                 )}
-                {activeTab === 'console' && (
-                  <ConsolePanel
-                    logs={logs}
-                    onClear={() => setLogs('')}
+                {/* Kept mounted (hidden when inactive) so streamed agent output
+                    and the xterm scrollback survive tab switches mid-run. */}
+                <div className={activeTab === 'console' ? 'h-full' : 'hidden'}>
+                  <AgentConsole
+                    ref={agentConsoleRef}
+                    active={activeTab === 'console'}
                     running={running}
-                    onSendInput={handleSendConsoleInput}
+                    onInput={handleAgentInput}
+                    onResize={handleAgentResize}
                   />
-                )}
+                </div>
                 {activeTab === 'terminal' && (
                   <TerminalPanel />
                 )}
@@ -818,6 +1059,26 @@ export default function Dashboard() {
           </div>
         </main>
       </div>
+      {editingPersona && (
+        <PersonaEditorModal
+          isOpen={true}
+          onClose={() => setEditingPersona(null)}
+          persona={editingPersona}
+          onSave={handleSavePersona}
+        />
+      )}
+      {auditingFeature && (
+        <HumanReviewModal
+          isOpen={true}
+          onClose={() => setAuditingFeature(null)}
+          featureName={auditingFeature.name}
+          activePhaseState={auditingFeature.phaseState}
+          onApprove={() => {
+            handleApprovePhase('implementation', auditingFeature.name);
+            setAuditingFeature(null);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -1,12 +1,13 @@
-import { spawn, ChildProcess } from 'child_process';
-import { getWorkspacePath } from './utils';
+import type * as pty from "node-pty";
+import { loadPty } from "../../secondary/pty/ptyLoader";
+import { getWorkspacePath } from "./utils";
 
 class TerminalManager {
-  private activeProcess: ChildProcess | null = null;
+  private activeProcess: pty.IPty | null = null;
   private listeners: Set<(data: string) => void> = new Set();
-  private workspacePath: string = '';
+  private workspacePath: string = "";
 
-  private getOrSpawnProcess(): ChildProcess {
+  private getOrSpawnProcess(): pty.IPty {
     const currentWorkspace = getWorkspacePath();
 
     // Spawn a new shell if none exists or if the workspace directory changed
@@ -16,40 +17,38 @@ class TerminalManager {
       }
 
       this.workspacePath = currentWorkspace;
-      const isWin = process.platform === 'win32';
-      const shell = isWin ? 'cmd.exe' : (process.env.SHELL || '/bin/bash');
+      const isWin = process.platform === "win32";
+      const shell = isWin ? "cmd.exe" : process.env.SHELL || "/bin/bash";
 
-      // Use login and interactive shell flags
-      const args = isWin ? [] : ['-l', '-i'];
+      // Login shell flag. The PTY itself provides the TTY that makes the shell
+      // behave interactively (prompt rendering, line editing, job control), so
+      // no explicit `-i` is needed.
+      const args = isWin ? [] : ["-l"];
 
-      this.activeProcess = spawn(shell, args, {
+      const spawned = loadPty().spawn(shell, args, {
+        name: "xterm-256color",
+        cols: 80,
+        rows: 24,
         cwd: this.workspacePath,
         env: {
           ...process.env,
-          TERM: 'xterm-256color', // Tells the shell to produce ANSI color codes
-        },
-        stdio: ['pipe', 'pipe', 'pipe'],
+          TERM: "xterm-256color",
+        } as { [key: string]: string },
+      });
+      this.activeProcess = spawned;
+
+      spawned.onData((data: string) => {
+        this.broadcast(data);
       });
 
-      this.activeProcess.stdout?.on('data', (chunk) => {
-        const str = chunk.toString();
-        this.broadcast(str);
-      });
-
-      this.activeProcess.stderr?.on('data', (chunk) => {
-        const str = chunk.toString();
-        this.broadcast(str);
-      });
-
-      this.activeProcess.on('close', () => {
-        this.broadcast('\r\n[Shell process exited]\r\n');
+      spawned.onExit(() => {
+        this.broadcast("\r\n[Shell process exited]\r\n");
         this.activeProcess = null;
       });
+    }
 
-      this.activeProcess.on('error', (err) => {
-        this.broadcast(`\r\n[Failed to start shell process: ${err.message}]\r\n`);
-        this.activeProcess = null;
-      });
+    if (!this.activeProcess) {
+      throw new Error("Failed to initialize terminal process");
     }
 
     return this.activeProcess;
@@ -78,17 +77,24 @@ class TerminalManager {
   }
 
   public writeInput(text: string): boolean {
-    const process = this.getOrSpawnProcess();
-    if (process.stdin && process.stdin.writable) {
-      process.stdin.write(text);
+    const proc = this.getOrSpawnProcess();
+    proc.write(text);
+    return true;
+  }
+
+  public resize(cols: number, rows: number): boolean {
+    if (!this.activeProcess) return false;
+    try {
+      this.activeProcess.resize(cols, rows);
       return true;
+    } catch {
+      return false;
     }
-    return false;
   }
 
   public cleanup() {
     if (this.activeProcess) {
-      this.activeProcess.kill('SIGKILL');
+      this.activeProcess.kill();
       this.activeProcess = null;
     }
     this.listeners.clear();

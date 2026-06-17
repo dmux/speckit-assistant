@@ -3,6 +3,7 @@ import { WorkflowService } from './WorkflowService';
 import { WorkspaceRepositoryPort } from '../ports/out/WorkspaceRepositoryPort';
 import { AgentRunnerPort } from '../ports/out/AgentRunnerPort';
 import { WorkflowState, FeatureWorkflow } from '../models/types';
+import { DEFAULT_PERSONAS } from '../models/personas';
 
 describe('WorkflowService', () => {
   let workspaceRepo: vi.Mocked<WorkspaceRepositoryPort>;
@@ -37,7 +38,8 @@ describe('WorkflowService', () => {
     } as any;
 
     agentRunner = {
-      runPhase: vi.fn()
+      runPhase: vi.fn(),
+      stop: vi.fn()
     } as any;
 
     service = new WorkflowService(workspaceRepo, agentRunner);
@@ -178,4 +180,170 @@ describe('WorkflowService', () => {
     const implPhase = authFeature.phases.find(p => p.phase === 'implementation')!;
     expect(implPhase.status).toBe('idle');
   });
+
+  describe('implementation review gate', () => {
+    const gateState = (): WorkflowState => {
+      const s: WorkflowState = JSON.parse(JSON.stringify(mockState));
+      const impl = s.features[0].phases.find(p => p.phase === 'implementation')!;
+      impl.status = 'running';
+      return s;
+    };
+
+    it('runs personas in order and advances to awaiting_review when all pass', async () => {
+      workspaceRepo.getWorkflowState.mockResolvedValue(gateState());
+      workspaceRepo.readFile.mockResolvedValue('looks good\n\nVERDICT: PASS');
+      const order: string[] = [];
+      agentRunner.runPersona = vi.fn().mockImplementation(
+        (_w: string, _f: string, persona: any) => {
+          order.push(persona.id);
+          return Promise.resolve(0);
+        }
+      );
+
+      const state = await service.runImplementationGate(
+        '/workspace',
+        'auth',
+        { agentType: 'claude' },
+        DEFAULT_PERSONAS
+      );
+
+      expect(order).toEqual(['qa', 'code-review', 'security', 'tech-lead']);
+      const impl = state.features[0].phases.find(p => p.phase === 'implementation')!;
+      expect(impl.status).toBe('awaiting_review');
+      expect(impl.personas?.map(p => p.status)).toEqual(['passed', 'passed', 'passed', 'passed']);
+    });
+
+    it('stops at the first failing persona and leaves implementation running', async () => {
+      workspaceRepo.getWorkflowState.mockResolvedValue(gateState());
+      workspaceRepo.readFile.mockImplementation((_w: string, p: string) =>
+        Promise.resolve(p.includes('security') ? 'blocking issue\n\nVERDICT: FAIL' : 'VERDICT: PASS')
+      );
+      const order: string[] = [];
+      agentRunner.runPersona = vi.fn().mockImplementation(
+        (_w: string, _f: string, persona: any) => {
+          order.push(persona.id);
+          return Promise.resolve(0);
+        }
+      );
+
+      const state = await service.runImplementationGate(
+        '/workspace',
+        'auth',
+        { agentType: 'claude' },
+        DEFAULT_PERSONAS
+      );
+
+      // tech-lead must NOT run after security fails
+      expect(order).toEqual(['qa', 'code-review', 'security']);
+      const impl = state.features[0].phases.find(p => p.phase === 'implementation')!;
+      expect(impl.status).toBe('running');
+      const byId = Object.fromEntries((impl.personas ?? []).map(p => [p.id, p.status]));
+      expect(byId.security).toBe('failed');
+      expect(byId['tech-lead']).toBe('idle');
+    });
+
+    it('falls back to exit code when no VERDICT marker is present', async () => {
+      workspaceRepo.getWorkflowState.mockResolvedValue(gateState());
+      workspaceRepo.readFile.mockRejectedValue(new Error('File not found')); // triggers catch block in resolvePersonaVerdict
+      // qa exits non-zero -> failed; gate stops
+      agentRunner.runPersona = vi.fn().mockResolvedValue(1);
+
+      const state = await service.runImplementationGate(
+        '/workspace',
+        'auth',
+        { agentType: 'claude' },
+        [DEFAULT_PERSONAS[0]] // only QA enabled
+      );
+
+      const impl = state.features[0].phases.find(p => p.phase === 'implementation')!;
+      expect(impl.personas?.find(p => p.id === 'qa')?.status).toBe('failed');
+      expect(impl.status).toBe('running');
+    });
+  });
+
+  it('runs implementation gate from runPhase if personas are provided', async () => {
+    const runningState: WorkflowState = JSON.parse(JSON.stringify(mockState));
+    const implPhase = runningState.features[0].phases.find(p => p.phase === 'implementation')!;
+    implPhase.status = 'idle';
+    workspaceRepo.getWorkflowState.mockResolvedValue(runningState);
+    workspaceRepo.readFile.mockResolvedValue('VERDICT: PASS');
+    agentRunner.runPhase = vi.fn().mockResolvedValue(0);
+    agentRunner.runPersona = vi.fn().mockResolvedValue(0);
+
+    const state = await service.runPhase(
+      '/workspace',
+      'implementation',
+      'auth',
+      { agentType: 'claude' },
+      '',
+      undefined,
+      [DEFAULT_PERSONAS[0]] // pass personas
+    );
+
+    const impl = state.features[0].phases.find(p => p.phase === 'implementation')!;
+    expect(impl.status).toBe('awaiting_review');
+  });
+
+
+
+  it('delegates writeStdin to agentRunner.writeStdin', async () => {
+    agentRunner.writeStdin = vi.fn().mockResolvedValue(true);
+    const result = await service.writeStdin('specification', 'auth', 'user input', 'qa');
+    expect(result).toBe(true);
+    expect(agentRunner.writeStdin).toHaveBeenCalledWith('specification', 'auth', 'user input', 'qa');
+  });
+
+  it('delegates resize to agentRunner.resize', async () => {
+    agentRunner.resize = vi.fn().mockResolvedValue(true);
+    const result = await service.resize('specification', 'auth', 80, 24, 'qa');
+    expect(result).toBe(true);
+    expect(agentRunner.resize).toHaveBeenCalledWith('specification', 'auth', 80, 24, 'qa');
+  });
+
+  it('calls writeFile and triggers state update', async () => {
+    workspaceRepo.writeFile = vi.fn().mockResolvedValue(undefined);
+    workspaceRepo.getWorkflowState = vi.fn().mockResolvedValue(mockState);
+    workspaceRepo.saveWorkflowState = vi.fn().mockResolvedValue(undefined);
+    const state = await service.writeFile('/workspace', 'file.md', 'content');
+    expect(state).toBe(mockState);
+    expect(workspaceRepo.writeFile).toHaveBeenCalledWith('/workspace', 'file.md', 'content');
+    expect(workspaceRepo.saveWorkflowState).toHaveBeenCalled();
+  });
+
+  it('calls stop on agentRunner', async () => {
+    agentRunner.stop = vi.fn().mockResolvedValue(true);
+    const result = await service.stop('implementation', 'auth', 'qa');
+    expect(result).toBe(true);
+    expect(agentRunner.stop).toHaveBeenCalledWith('implementation', 'auth', 'qa');
+  });
+
+  describe('edge case branches', () => {
+    it('discardPhase returns state unchanged if feature is not found', async () => {
+      const state = await service.discardPhase('/workspace', 'specification', 'non-existent-feature');
+      expect(state.activeFeatureName).toBe('auth');
+    });
+
+    it('discardPhase returns state unchanged if phase index is invalid', async () => {
+      const state = await service.discardPhase('/workspace', 'invalid-phase' as any, 'auth');
+      expect(state.activeFeatureName).toBe('auth');
+    });
+
+    it('toggleTask does not auto-review if feature is not found', async () => {
+      workspaceRepo.toggleTask.mockResolvedValue(mockState);
+      const state = await service.toggleTask('/workspace', 'non-existent-feature', 0, true);
+      expect(state).toBe(mockState);
+    });
+
+    it('toggleTask does not auto-review if tasksPhase filePath is missing', async () => {
+      const tasksMissingState: WorkflowState = JSON.parse(JSON.stringify(mockState));
+      const tasksPhase = tasksMissingState.features[0].phases.find(p => p.phase === 'tasks')!;
+      tasksPhase.filePath = null;
+      workspaceRepo.toggleTask.mockResolvedValue(tasksMissingState);
+
+      const state = await service.toggleTask('/workspace', 'auth', 0, true);
+      expect(state).toBe(tasksMissingState);
+    });
+  });
 });
+
+

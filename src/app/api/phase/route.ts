@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import { workflowService } from '../../../adapters/di';
 import { getWorkspacePath } from '../../../adapters/primary/api/utils';
-import { WorkflowPhase, AgentConfig } from '../../../domain/models/types';
+import { WorkflowPhase, AgentConfig, PersonaConfig } from '../../../domain/models/types';
 
 export async function POST(req: Request) {
   try {
-    const { action, phase, featureName, agentConfig, prompt, text } = await req.json();
+    const { action, phase, featureName, agentConfig, prompt, text, cols, rows, personaId, personas } = await req.json();
 
     if (!action || !phase) {
       return NextResponse.json({ error: 'Missing action or phase' }, { status: 400 });
@@ -24,11 +24,21 @@ export async function POST(req: Request) {
     }
 
     if (action === 'input') {
-      const success = await workflowService.writeStdin(phase, featureName, text);
+      const success = await workflowService.writeStdin(phase, featureName, text, personaId);
       return NextResponse.json({ success });
     }
 
-    if (action === 'run') {
+    if (action === 'resize') {
+      const success = await workflowService.resize(phase, featureName, cols, rows, personaId);
+      return NextResponse.json({ success });
+    }
+
+    if (action === 'stop') {
+      const success = await workflowService.stop(phase, featureName, personaId);
+      return NextResponse.json({ success });
+    }
+
+    if (action === 'run' || action === 'run-gate') {
       const encoder = new TextEncoder();
       const customReadableStream = new ReadableStream({
         async start(controller) {
@@ -39,16 +49,24 @@ export async function POST(req: Request) {
           };
 
           try {
-            const finalState = await workflowService.runPhase(
-              workspacePath,
-              phase,
-              featureName,
-              agentConfig as AgentConfig,
-              prompt,
-              (text: string) => {
-                sendEvent('log', { text });
-              }
-            );
+            const onData = (t: string) => sendEvent('log', { text: t });
+            const finalState = action === 'run-gate'
+              ? await workflowService.runImplementationGate(
+                  workspacePath,
+                  featureName,
+                  agentConfig as AgentConfig,
+                  (personas ?? []) as PersonaConfig[],
+                  onData
+                )
+              : await workflowService.runPhase(
+                  workspacePath,
+                  phase,
+                  featureName,
+                  agentConfig as AgentConfig,
+                  prompt,
+                  onData,
+                  personas as PersonaConfig[] | undefined
+                );
             sendEvent('done', { state: finalState });
             controller.close();
           } catch (err: any) {

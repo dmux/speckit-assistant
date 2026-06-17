@@ -246,6 +246,22 @@ describe('Next.js API Routes - E2E Integration Tests', () => {
     expect(logsAccumulated).toContain('event: done');
   });
 
+  it('should handle stop action and return success status', async () => {
+    const stopReq = new Request('http://localhost/api/phase', {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'stop',
+        phase: 'specification',
+        featureName: '001-user-authentication'
+      })
+    });
+    
+    const stopRes = await managePhase(stopReq);
+    expect(stopRes.status).toBe(200);
+    const data = await stopRes.json();
+    expect(data).toHaveProperty('success');
+  });
+
   it('should stream updates when files change via watch route', async () => {
     const watchRes = await watchState();
     expect(watchRes.headers.get('Content-Type')).toBe('text/event-stream');

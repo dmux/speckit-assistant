@@ -42,8 +42,12 @@ export async function GET() {
 
       // Watch all change events (add, change, unlink)
       watcher.on('all', (event, filePath) => {
-        // Skip changes inside the internal runtime state directory
-        if (filePath.includes('.runtime') || filePath.includes('.git')) return;
+        if (filePath.includes('.git')) return;
+        // The internal runtime dir is otherwise noisy, but workflow-state.json
+        // holds the phase statuses (e.g. 'running'), so let that one through —
+        // it's what tells the Kanban a phase is executing. getWorkflowState is
+        // read-only, so re-emitting on it cannot create a write/watch loop.
+        if (filePath.includes('.runtime') && !filePath.includes('workflow-state.json')) return;
         sendUpdate(filePath);
       });
     },
