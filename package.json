@@ -1,6 +1,6 @@
 {
   "name": "speckit-assistant",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Visual orchestrator for Spec-Driven Development (SDD) — Next.js, ReactFlow and Hexagonal Architecture",
   "main": "dist/index.js",
   "bin": {
@@ -56,11 +56,15 @@
     "tailwind-merge": "^2.5.5"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^20.17.9",
     "@types/react": "^19.0.1",
     "@types/react-dom": "^19.0.2",
     "@vitest/coverage-v8": "^2.1.9",
     "autoprefixer": "^10.4.20",
+    "jsdom": "^29.1.1",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.16",
     "typescript": "^5.7.2",
