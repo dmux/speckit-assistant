@@ -83,10 +83,12 @@ export class FSWorkspaceRepository implements WorkspaceRepositoryPort {
         }
 
         // Reconcile checklist: spec-kit may emit either a single checklist.md
-        // file or a checklist/ directory containing multiple .md files.
+        // file or a checklists/ directory containing multiple .md files
+        // (spec-kit emits the plural "checklists" dir; "checklist" kept as fallback).
         const checklistPhase = feature.phases.find(p => p.phase === 'checklist')!;
         const checklistFile = path.join(specsDir, feature.name, 'checklist.md');
-        const checklistDir = path.join(specsDir, feature.name, 'checklist');
+        const checklistDirs = ['checklists', 'checklist'].map(d => path.join(specsDir, feature.name, d));
+        const checklistDir = checklistDirs.find(d => fs.existsSync(d) && fs.statSync(d).isDirectory()) || null;
         if (fs.existsSync(checklistFile) && fs.statSync(checklistFile).isFile()) {
           checklistPhase.filePath = checklistFile;
           checklistPhase.content = fs.readFileSync(checklistFile, 'utf-8');
@@ -94,7 +96,7 @@ export class FSWorkspaceRepository implements WorkspaceRepositoryPort {
           if (checklistPhase.status === 'idle') {
             checklistPhase.status = 'awaiting_review';
           }
-        } else if (fs.existsSync(checklistDir) && fs.statSync(checklistDir).isDirectory()) {
+        } else if (checklistDir) {
           const files = this.readMarkdownDir(checklistDir);
           if (files.length > 0) {
             checklistPhase.files = files;

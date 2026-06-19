@@ -66,7 +66,7 @@ SpecKit Assistant acts as the **Visual Dashboard** and **Command-Line Interface*
 * 🔌 **Agnostic MCP Tools**: Define **Model Context Protocol** servers once, assign them per agent, and apply them to each CLI's *native* config — Claude `.mcp.json`, Gemini `~/.gemini/settings.json`, Codex `~/.codex/config.toml` — with safe read-merge-write (and `.bak` backups).
 * 💰 **Execution Cost Capture**: Model/CLI-agnostic per-run cost & token usage (parsed when the CLI prints it, otherwise estimated from I/O volume × a pricing table), surfaced in the Human Review Portal.
 * 🛡️ **Human Review Portal**: Inspect git diffs, browse the **entire project file tree** with syntax highlighting, toggle markdown preview/raw, and sign off the persona review gate with real cost/duration metrics.
-* ✅ **Multi-File Checklists**: Renders a `checklist/` directory of multiple `.md` files via per-file sub-tabs, in addition to a single `checklist.md`.
+* ✅ **Multi-File Checklists**: Renders a `checklists/` directory of multiple `.md` files via per-file sub-tabs, in addition to a single `checklist.md`.
 * 📝 **WYSIWYG Markdown Editor**: Edit specifications or plans with a formatting toolbar (Bold, Italic, Headings, Code Blocks, Tables, Checklists), with support for alternating-row Vercel-style tables.
 * 🔄 **Conflict & Change Guard**: A live watcher (`chokidar` + SSE) detects external changes on disk and alerts you in case of editing conflicts.
 * 💾 **Persistent State**: Automatically remembers your active workspace inside `~/.speckit-assistant-config.json`.
@@ -251,7 +251,7 @@ my-project/
     └── 001-user-authentication/
         ├── spec.md             # Feature requirements
         ├── plan.md             # Implementation strategy
-        ├── checklist.md        # — or a checklist/ directory of multiple .md files
+        ├── checklist.md        # — or a checklists/ directory of multiple .md files
         ├── tasks.md            # Actionable checklists
         └── reviews/            # Persona review reports (qa.md, security.md, ...)
 ```

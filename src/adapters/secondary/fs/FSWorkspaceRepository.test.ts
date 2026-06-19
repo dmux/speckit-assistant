@@ -151,10 +151,10 @@ describe('FSWorkspaceRepository - Demo Integration Test', () => {
     expect(implAfter.personas?.find(p => p.id === 'qa')?.status).toBe('failed');
   });
 
-  it('reconciles a checklist/ directory into multiple phase files (sorted, first as primary)', async () => {
+  it('reconciles a checklists/ directory into multiple phase files (sorted, first as primary)', async () => {
     const repo = new FSWorkspaceRepository();
     const feature = '002-shopping-cart';
-    const checklistDir = path.join(tempPath, 'specs', feature, 'checklist');
+    const checklistDir = path.join(tempPath, 'specs', feature, 'checklists');
     fs.mkdirSync(checklistDir, { recursive: true });
     // Write out of alphabetical order to verify sorting.
     fs.writeFileSync(path.join(checklistDir, 'ux.md'), '# UX Checklist\n- [ ] a', 'utf-8');
