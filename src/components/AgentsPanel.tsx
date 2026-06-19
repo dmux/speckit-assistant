@@ -1,36 +1,89 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Bot, Plus, Pencil, Trash2, CheckCircle2, Circle, UploadCloud, Shield } from 'lucide-react';
+import { Bot, Plus, Pencil, Trash2, CheckCircle2, Circle, UploadCloud, Shield, Users, ArrowUp, ArrowDown } from 'lucide-react';
 import { AgentsFile, AgentProfile } from '../domain/models/agents';
 import { McpServer } from '../domain/models/mcp';
 import { PersonaConfig } from '../domain/models/types';
+import { SpecAgentsFile, SpecAgent } from '../domain/models/specAgents';
 import type { McpApplyResult } from '../domain/ports/out/McpConfigPort';
+import type { SpecAgentApplyResult } from '../domain/ports/out/SpecAgentRepositoryPort';
 import { AgentEditorModal } from './AgentEditorModal';
+import { SpecAgentEditorModal } from './SpecAgentEditorModal';
 
 type AgentsPanelProps = {
   agentsFile: AgentsFile;
   mcpServers: McpServer[];
   personaConfigs: PersonaConfig[];
+  specAgentsFile: SpecAgentsFile;
   onSaveAgents: (file: AgentsFile) => void;
   onSavePersonas: (next: PersonaConfig[]) => void;
+  onSaveSpecAgents: (file: SpecAgentsFile) => void;
   onEditPersona: (p: PersonaConfig) => void;
   onApply: (agentId: string) => Promise<McpApplyResult & { error?: string }>;
+  onApplySpecAgents: () => Promise<SpecAgentApplyResult & { error?: string }>;
 };
 
 export const AgentsPanel: React.FC<AgentsPanelProps> = ({
   agentsFile,
   mcpServers,
   personaConfigs,
+  specAgentsFile,
   onSaveAgents,
   onSavePersonas,
+  onSaveSpecAgents,
   onEditPersona,
   onApply,
+  onApplySpecAgents,
 }) => {
   const [editing, setEditing] = useState<AgentProfile | null>(null);
   const [creating, setCreating] = useState(false);
   const [applyMsg, setApplyMsg] = useState<{ id: string; text: string; error?: boolean } | null>(null);
   const [applying, setApplying] = useState<string | null>(null);
+
+  // Specification agents state
+  const [editingSpec, setEditingSpec] = useState<SpecAgent | null>(null);
+  const [creatingSpec, setCreatingSpec] = useState(false);
+  const [specApplyMsg, setSpecApplyMsg] = useState<{ text: string; error?: boolean } | null>(null);
+  const [specApplying, setSpecApplying] = useState(false);
+
+  const specAgents = [...specAgentsFile.agents].sort((a, b) => a.priority - b.priority);
+
+  const upsertSpec = (a: SpecAgent) => {
+    const exists = specAgents.some(x => x.id === a.id);
+    onSaveSpecAgents({ agents: exists ? specAgentsFile.agents.map(x => (x.id === a.id ? a : x)) : [...specAgentsFile.agents, a] });
+    setEditingSpec(null);
+    setCreatingSpec(false);
+  };
+  const removeSpec = (id: string) => {
+    if (!confirm('Delete this specification agent?')) return;
+    onSaveSpecAgents({ agents: specAgentsFile.agents.filter(a => a.id !== id) });
+  };
+  const toggleSpec = (id: string, patch: Partial<SpecAgent>) =>
+    onSaveSpecAgents({ agents: specAgentsFile.agents.map(a => (a.id === id ? { ...a, ...patch } : a)) });
+  const moveSpec = (id: string, dir: -1 | 1) => {
+    const idx = specAgents.findIndex(a => a.id === id);
+    const swap = idx + dir;
+    if (swap < 0 || swap >= specAgents.length) return;
+    const a = specAgents[idx], b = specAgents[swap];
+    onSaveSpecAgents({ agents: specAgentsFile.agents.map(x => (x.id === a.id ? { ...x, priority: b.priority } : x.id === b.id ? { ...x, priority: a.priority } : x)) });
+  };
+  const applySpec = async () => {
+    setSpecApplying(true);
+    setSpecApplyMsg(null);
+    try {
+      const r = await onApplySpecAgents();
+      if (r.error) setSpecApplyMsg({ text: r.error, error: true });
+      else {
+        const custom = r.customWritten?.length ? ` (+${r.customWritten.length} custom command file(s))` : '';
+        setSpecApplyMsg({ text: `Wrote ${r.hookCount} hook(s) to ${r.path}${custom}` });
+      }
+    } catch (e: any) {
+      setSpecApplyMsg({ text: e.message || 'Apply failed', error: true });
+    } finally {
+      setSpecApplying(false);
+    }
+  };
 
   const agents = agentsFile.agents;
 
@@ -198,12 +251,85 @@ export const AgentsPanel: React.FC<AgentsPanelProps> = ({
         </div>
       </div>
 
+      {/* Specification agents */}
+      <div className="mt-10">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-lg font-bold text-zinc-900 dark:text-white flex items-center gap-2">
+            <Users size={18} /> Specification Agents
+          </h2>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={applySpec}
+              disabled={specApplying}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition disabled:opacity-50"
+              title="Write the enabled agents as after_specify hooks in .specify/extensions.yml"
+            >
+              <UploadCloud size={13} /> {specApplying ? 'Applying…' : 'Apply to spec-kit'}
+            </button>
+            <button
+              onClick={() => { setCreatingSpec(true); setEditingSpec(null); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-black dark:bg-white text-white dark:text-black rounded-lg text-[11px] font-semibold hover:opacity-90 transition"
+            >
+              <Plus size={13} /> New Agent
+            </button>
+          </div>
+        </div>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
+          Participants that run (in order) after <span className="font-mono">/speckit.specify</span>; each writes to <span className="font-mono">specs/&lt;feature&gt;/spec-reviews/</span>.
+        </p>
+
+        {specApplyMsg && (
+          <div className={`mb-3 text-[11px] rounded p-2 break-words ${specApplyMsg.error ? 'bg-red-500/10 text-red-600 dark:text-red-400' : 'bg-green-500/10 text-green-700 dark:text-green-400'}`}>
+            {specApplyMsg.text}
+          </div>
+        )}
+
+        <div className="space-y-2">
+          {specAgents.map((a, idx) => (
+            <div key={a.id} className="flex items-center gap-3 p-3 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg">
+              <div className="flex flex-col">
+                <button onClick={() => moveSpec(a.id, -1)} disabled={idx === 0} className="text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 disabled:opacity-30"><ArrowUp size={12} /></button>
+                <button onClick={() => moveSpec(a.id, 1)} disabled={idx === specAgents.length - 1} className="text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 disabled:opacity-30"><ArrowDown size={12} /></button>
+              </div>
+              <input type="checkbox" checked={a.enabled} onChange={e => toggleSpec(a.id, { enabled: e.target.checked })} className="w-4 h-4 rounded border-zinc-300 dark:border-zinc-700 text-blue-500 focus:ring-0" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-zinc-900 dark:text-white truncate">{a.label}</span>
+                  <span className="text-[9px] font-mono text-zinc-500">{a.command}</span>
+                  {a.builtin && <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-zinc-100 dark:bg-zinc-900 text-zinc-500 uppercase">built-in</span>}
+                </div>
+                {a.description && <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">{a.description}</p>}
+              </div>
+              <button
+                onClick={() => toggleSpec(a.id, { optional: !a.optional })}
+                className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase border ${a.optional ? 'bg-zinc-100 dark:bg-zinc-900 text-zinc-500 border-zinc-200 dark:border-zinc-800' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'}`}
+                title="Toggle optional / mandatory"
+              >
+                {a.optional ? 'optional' : 'mandatory'}
+              </button>
+              <button onClick={() => setEditingSpec(a)} className="p-1.5 rounded text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition" title="Edit"><Pencil size={13} /></button>
+              {!a.builtin && (
+                <button onClick={() => removeSpec(a.id)} className="p-1.5 rounded text-zinc-500 hover:text-red-500 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition" title="Delete"><Trash2 size={13} /></button>
+              )}
+            </div>
+          ))}
+          {specAgents.length === 0 && <p className="text-xs text-zinc-500 italic">No specification agents.</p>}
+        </div>
+      </div>
+
       <AgentEditorModal
         isOpen={creating || editing !== null}
         onClose={() => { setEditing(null); setCreating(false); }}
         agent={editing}
         mcpServers={mcpServers}
         onSave={upsert}
+      />
+
+      <SpecAgentEditorModal
+        isOpen={creatingSpec || editingSpec !== null}
+        onClose={() => { setEditingSpec(null); setCreatingSpec(false); }}
+        agent={editingSpec}
+        onSave={upsertSpec}
       />
     </div>
   );

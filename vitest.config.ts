@@ -4,6 +4,10 @@ import path from 'path';
 export default defineConfig({
   test: {
     globals: true,
+    // Run test files serially: some tests rely on real-time filesystem watching
+    // (chokidar SSE) and PTY processes that get starved by concurrent FS-heavy
+    // suites, causing flaky timeouts.
+    fileParallelism: false,
     setupFiles: ['./vitest.setup.ts'],
     alias: {
       '@': path.resolve(__dirname, './src'),

@@ -296,7 +296,7 @@ describe('Next.js API Routes - E2E Integration Tests', () => {
       // Wait for the stream update with a timeout
       const result = await Promise.race([
         readPromise,
-        new Promise<string>((_, reject) => setTimeout(() => reject(new Error('Timeout waiting for watch update')), 4000))
+        new Promise<string>((_, reject) => setTimeout(() => reject(new Error('Timeout waiting for watch update')), 8000))
       ]);
 
       expect(result).toContain('event: update');
@@ -312,7 +312,7 @@ describe('Next.js API Routes - E2E Integration Tests', () => {
       }
       fs.writeFileSync(dummyFilePath, originalContent);
     }
-  });
+  }, 12000);
 
   it('should handle missing parameters across routes', async () => {
     // 1. Feature route missing name

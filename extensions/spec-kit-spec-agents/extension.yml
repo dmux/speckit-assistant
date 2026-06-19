@@ -1,0 +1,59 @@
+schema_version: "1.0"
+
+extension:
+  id: "spec-agents"
+  name: "Spec Kit Specification Agents"
+  version: "1.0.0"
+  description: "Participating sub-agents for the specification phase: Product Owner, Architecture, Technical Refinement, and a Consolidate lead."
+  author: "speckit-assistant"
+  repository: "https://github.com/dmux/speckit-assistant"
+  license: "MIT"
+
+requires:
+  speckit_version: ">=0.1.0"
+
+provides:
+  commands:
+    - name: "speckit.spec.po"
+      file: "commands/po.md"
+      description: "Product Owner agent: business value, scope and acceptance criteria."
+    - name: "speckit.spec.architecture"
+      file: "commands/architecture.md"
+      description: "Architecture agent: technical risks, non-functional requirements and constraints."
+    - name: "speckit.spec.refine"
+      file: "commands/refine.md"
+      description: "Technical Refinement agent: requirement clarity, ambiguities and testability."
+    - name: "speckit.spec.consolidate"
+      file: "commands/consolidate.md"
+      description: "Consolidate lead: merges the spec-reviews contributions into spec.md."
+
+# These commands are intended to be wired as after_specify hooks (priority-ordered)
+# in the project's .specify/extensions.yml — managed by the speckit-assistant UI.
+hooks:
+  after_specify:
+    - id: spec-po
+      extension: "spec-agents"
+      command: "speckit.spec.po"
+      optional: true
+      priority: 10
+      description: "Product Owner review of the specification."
+    - id: spec-architecture
+      extension: "spec-agents"
+      command: "speckit.spec.architecture"
+      optional: true
+      priority: 20
+      description: "Architecture review of the specification."
+    - id: spec-refine
+      extension: "spec-agents"
+      command: "speckit.spec.refine"
+      optional: true
+      priority: 30
+      description: "Technical refinement of the specification."
+    - id: spec-consolidate
+      extension: "spec-agents"
+      command: "speckit.spec.consolidate"
+      optional: true
+      priority: 90
+      description: "Consolidate the contributions into spec.md."
+
+tags: ["specification", "process", "review", "agents"]

@@ -4,7 +4,7 @@
 
 ---
 
-[![Version](https://img.shields.io/badge/Version-0.2.0-blue.svg)](https://github.com/dmux/speckit-assistant)
+[![Version](https://img.shields.io/badge/Version-0.3.0-blue.svg)](https://github.com/dmux/speckit-assistant)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Coverage Status](https://img.shields.io/badge/Coverage-99.44%25-brightgreen.svg)](https://github.com/dmux/speckit-assistant)
 [![Node Version](https://img.shields.io/badge/Node-%3E%3D%2018.0.0-blue.svg)](https://nodejs.org)

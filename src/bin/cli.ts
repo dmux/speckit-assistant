@@ -136,7 +136,9 @@ function startWebServer() {
     stdio: 'inherit',
     env: {
       ...process.env,
-      WORKSPACE_PATH: workspacePath
+      WORKSPACE_PATH: workspacePath,
+      // Lets the API locate the app's bundled extensions/ dir at runtime.
+      SPECKIT_ASSISTANT_ROOT: appDir
     }
   });
 

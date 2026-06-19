@@ -26,8 +26,12 @@ import { PersonaEditorModal } from '@/components/PersonaEditorModal';
 import { HumanReviewModal } from '@/components/HumanReviewModal';
 import AgentsPanel from '@/components/AgentsPanel';
 import McpPanel from '@/components/McpPanel';
+import ExtensionsPanel, { type ExtensionAction } from '@/components/ExtensionsPanel';
+import AboutModal, { APP_VERSION } from '@/components/AboutModal';
 import { AgentsFile, DEFAULT_AGENTS, toAgentConfig, activeAgent } from '@/domain/models/agents';
 import { McpFile, DEFAULT_MCP } from '@/domain/models/mcp';
+import { SpecAgentsFile, DEFAULT_SPEC_AGENTS } from '@/domain/models/specAgents';
+import { InstalledExtension, BundledExtension } from '@/domain/models/extensions';
 import {
   Sun,
   Moon,
@@ -46,7 +50,8 @@ import {
   Minimize2,
   ShieldCheck,
   Bot,
-  Plug
+  Plug,
+  Package
 } from 'lucide-react';
 
 const PHASE_LABELS: Record<WorkflowPhase, string> = {
@@ -67,7 +72,7 @@ export default function Dashboard() {
   const [selectedFile, setSelectedFile] = useState<{ path: string; content: string } | null>(null);
   
   const [viewMode, setViewMode] = useState<'kanban' | 'dag'>('kanban');
-  const [section, setSection] = useState<'workflow' | 'agents' | 'mcp'>('workflow');
+  const [section, setSection] = useState<'workflow' | 'agents' | 'mcp' | 'extensions'>('workflow');
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [agentConfig, setAgentConfig] = useState<AgentConfig>({
     agentType: 'claude',
@@ -76,10 +81,13 @@ export default function Dashboard() {
   });
   const [agentsFile, setAgentsFile] = useState<AgentsFile>(DEFAULT_AGENTS);
   const [mcpFile, setMcpFile] = useState<McpFile>(DEFAULT_MCP);
+  const [specAgentsFile, setSpecAgentsFile] = useState<SpecAgentsFile>(DEFAULT_SPEC_AGENTS);
+  const [extState, setExtState] = useState<{ available: boolean; installed: InstalledExtension[]; bundled: BundledExtension[] }>({ available: false, installed: [], bundled: [] });
   const [prompt, setPrompt] = useState<string>('');
   const [personaConfigs, setPersonaConfigs] = useState<PersonaConfig[]>(DEFAULT_PERSONAS);
   const [editingPersona, setEditingPersona] = useState<PersonaConfig | null>(null);
   const [auditingFeature, setAuditingFeature] = useState<{ name: string; phaseState: PhaseState } | null>(null);
+  const [showAbout, setShowAbout] = useState<boolean>(false);
   const [newFeatureName, setNewFeatureName] = useState<string>('');
   const [running, setRunning] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'editor' | 'console' | 'terminal'>('editor');
@@ -118,6 +126,8 @@ export default function Dashboard() {
     fetchPersonas();
     fetchAgents();
     fetchMcp();
+    fetchSpecAgents();
+    fetchExtensions();
 
     // Default to light mode
     const root = window.document.documentElement;
@@ -225,6 +235,59 @@ export default function Dashboard() {
       body: JSON.stringify({ agentId }),
     });
     return res.json();
+  };
+
+  const fetchSpecAgents = async () => {
+    try {
+      const res = await fetch('/api/spec-agents');
+      if (res.ok) setSpecAgentsFile(await res.json());
+    } catch (err) {
+      console.error('Failed to fetch spec agents:', err);
+    }
+  };
+
+  const handleSaveSpecAgents = async (file: SpecAgentsFile) => {
+    setSpecAgentsFile(file);
+    try {
+      await fetch('/api/spec-agents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(file),
+      });
+    } catch (err) {
+      console.error('Failed to save spec agents:', err);
+    }
+  };
+
+  const handleApplySpecAgents = async () => {
+    const res = await fetch('/api/spec-agents/apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(specAgentsFile),
+    });
+    return res.json();
+  };
+
+  const fetchExtensions = async () => {
+    try {
+      const res = await fetch('/api/extensions');
+      if (res.ok) setExtState(await res.json());
+    } catch (err) {
+      console.error('Failed to fetch extensions:', err);
+    }
+  };
+
+  const handleExtensionAction = async (a: ExtensionAction) => {
+    const res = await fetch('/api/extensions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(a),
+    });
+    const data = await res.json();
+    if (Array.isArray(data.installed)) {
+      setExtState(prev => ({ ...prev, installed: data.installed }));
+    }
+    return data;
   };
 
   const handleSavePersonasList = async (next: PersonaConfig[]) => {
@@ -710,7 +773,16 @@ export default function Dashboard() {
         <div className="flex items-center gap-3">
           <span className="text-xl">🌱</span>
           <div>
-            <h1 className="text-sm font-bold tracking-tight">Spec Kit Assistant</h1>
+            <div className="flex items-center gap-1.5">
+              <h1 className="text-sm font-bold tracking-tight">Spec Kit Assistant</h1>
+              <button
+                onClick={() => setShowAbout(true)}
+                className="text-[9px] font-mono text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 border border-zinc-200 dark:border-zinc-800 rounded px-1 py-0.5 leading-none transition"
+                title="About"
+              >
+                v{APP_VERSION}
+              </button>
+            </div>
             <p className="text-[10px] text-zinc-400 font-mono">WORKSPACE: {state ? 'ACTIVE' : 'CONNECTING...'}</p>
           </div>
         </div>
@@ -723,6 +795,7 @@ export default function Dashboard() {
               { id: 'workflow', label: 'Workflow', icon: <LayoutGrid size={13} /> },
               { id: 'agents', label: 'Agents', icon: <Bot size={13} /> },
               { id: 'mcp', label: 'MCP Tools', icon: <Plug size={13} /> },
+              { id: 'extensions', label: 'Extensions', icon: <Package size={13} /> },
             ] as const).map(s => (
               <button
                 key={s.id}
@@ -798,15 +871,27 @@ export default function Dashboard() {
             agentsFile={agentsFile}
             mcpServers={mcpFile.servers}
             personaConfigs={personaConfigs}
+            specAgentsFile={specAgentsFile}
             onSaveAgents={handleSaveAgents}
             onSavePersonas={handleSavePersonasList}
+            onSaveSpecAgents={handleSaveSpecAgents}
             onEditPersona={setEditingPersona}
             onApply={handleApplyMcp}
+            onApplySpecAgents={handleApplySpecAgents}
           />
         )}
 
         {section === 'mcp' && (
           <McpPanel mcpFile={mcpFile} onSave={handleSaveMcp} />
+        )}
+
+        {section === 'extensions' && (
+          <ExtensionsPanel
+            available={extState.available}
+            installed={extState.installed}
+            bundled={extState.bundled}
+            onAction={handleExtensionAction}
+          />
         )}
 
         {section === 'workflow' && (
@@ -1059,6 +1144,7 @@ export default function Dashboard() {
         </>
         )}
       </div>
+      <AboutModal isOpen={showAbout} onClose={() => setShowAbout(false)} />
       {editingPersona && (
         <PersonaEditorModal
           isOpen={true}
