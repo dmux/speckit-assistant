@@ -4,6 +4,7 @@
 
 ---
 
+[![Version](https://img.shields.io/badge/Version-0.2.0-blue.svg)](https://github.com/dmux/speckit-assistant)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Coverage Status](https://img.shields.io/badge/Coverage-99.44%25-brightgreen.svg)](https://github.com/dmux/speckit-assistant)
 [![Node Version](https://img.shields.io/badge/Node-%3E%3D%2018.0.0-blue.svg)](https://nodejs.org)
@@ -57,10 +58,15 @@ SpecKit Assistant acts as the **Visual Dashboard** and **Command-Line Interface*
 
 ## ✨ Key Features
 
-* 🎨 **Premium UI/UX**: High-fidelity dark and light themes styled with a sleek, minimalist Vercel aesthetic.
+* 🎨 **Premium UI/UX**: High-fidelity dark and light themes (light by default) styled with a sleek, minimalist Vercel aesthetic.
+* 🧭 **Full-Width Sectioned Layout**: Top-level sections separate responsibilities — **Workflow**, **Agents**, and **MCP Tools** — each using the full width of the screen.
 * 🗺️ **Interactive ReactFlow DAG Map**: Visualizes the dependencies and status of every feature's development lifecycle.
 * 📋 **Drag-and-Drop Kanban Board**: Progress features forward (auto-approving intermediate steps and launching agents) or roll them back (marking downstream files as stale) by simple drag-and-drop.
-* 🤖 **Agnostic Agent Dispatcher**: Spawn executions via terminal subshells for Anthropic's **Claude CLI**, Google's **Gemini CLI**, **GitHub Copilot CLI**, or custom CLI wrappers.
+* 🤖 **Agent Management (YAML)**: Create, edit, and persist multiple CLI agent profiles centrally in `.specify/agents.yaml`; the active agent drives every workflow run. Supports Anthropic's **Claude CLI**, Google's **Gemini CLI**, **GitHub Copilot CLI**, **OpenAI Codex**, or custom CLI wrappers.
+* 🔌 **Agnostic MCP Tools**: Define **Model Context Protocol** servers once, assign them per agent, and apply them to each CLI's *native* config — Claude `.mcp.json`, Gemini `~/.gemini/settings.json`, Codex `~/.codex/config.toml` — with safe read-merge-write (and `.bak` backups).
+* 💰 **Execution Cost Capture**: Model/CLI-agnostic per-run cost & token usage (parsed when the CLI prints it, otherwise estimated from I/O volume × a pricing table), surfaced in the Human Review Portal.
+* 🛡️ **Human Review Portal**: Inspect git diffs, browse the **entire project file tree** with syntax highlighting, toggle markdown preview/raw, and sign off the persona review gate with real cost/duration metrics.
+* ✅ **Multi-File Checklists**: Renders a `checklist/` directory of multiple `.md` files via per-file sub-tabs, in addition to a single `checklist.md`.
 * 📝 **WYSIWYG Markdown Editor**: Edit specifications or plans with a formatting toolbar (Bold, Italic, Headings, Code Blocks, Tables, Checklists), with support for alternating-row Vercel-style tables.
 * 🔄 **Conflict & Change Guard**: A live watcher (`chokidar` + SSE) detects external changes on disk and alerts you in case of editing conflicts.
 * 💾 **Persistent State**: Automatically remembers your active workspace inside `~/.speckit-assistant-config.json`.
@@ -232,20 +238,22 @@ SpecKit Assistant manages markdown files inside your target project workspace. Y
 
 ```text
 my-project/
+├── .mcp.json                   # MCP servers applied to the Claude CLI (generated)
 ├── .specify/
 │   ├── memory/
 │   │   └── constitution.md     # Project-wide context & rules
+│   ├── agents.yaml             # Persisted CLI agent profiles + active agent
+│   ├── mcp.yaml                # Central MCP server definitions
+│   ├── personas-config.json    # Review-gate persona configuration
 │   └── .runtime/
 │       └── workflow-state.json # Internal workflow cache (automatically managed)
 └── specs/
-    ├── 001-user-authentication/
-    │   ├── spec.md             # Feature requirements
-    │   ├── plan.md             # Implementation strategy
-    │   └── tasks.md            # Actionable checklists
-    └── 002-database-migration/
-        ├── spec.md
-        ├── plan.md
-        └── tasks.md
+    └── 001-user-authentication/
+        ├── spec.md             # Feature requirements
+        ├── plan.md             # Implementation strategy
+        ├── checklist.md        # — or a checklist/ directory of multiple .md files
+        ├── tasks.md            # Actionable checklists
+        └── reviews/            # Persona review reports (qa.md, security.md, ...)
 ```
 
 ---
@@ -268,13 +276,15 @@ pnpm run test
 ### Coverage Report Details
 
 ```text
- ✓ src/domain/services/WorkflowService.test.ts (9 tests)
- ✓ src/adapters/secondary/fs/FSWorkspaceRepository.test.ts (2 tests)
- ✓ src/app/api/api.test.ts (9 tests)
+ ✓ src/domain/services/WorkflowService.test.ts (22 tests)
+ ✓ src/domain/services/CostMeter.test.ts (9 tests)
+ ✓ src/domain/services/mcpTranslate.test.ts (6 tests)
+ ✓ src/adapters/secondary/fs/FSWorkspaceRepository.test.ts (8 tests)
+ ✓ src/adapters/secondary/fs/FSMcpConfig.test.ts (4 tests)
+ ✓ src/components/HumanReviewModal.test.tsx (12 tests)
 
- Test Files  3 passed (3)
-      Tests  20 passed (20)
-   Duration  511ms
+ Test Files  13 passed (13)
+      Tests  108 passed (108)
 ```
 
 ---
