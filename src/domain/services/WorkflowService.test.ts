@@ -121,6 +121,20 @@ describe('WorkflowService', () => {
     expect(specPhase.status).toBe('idle');
   });
 
+  it('records captured cost on the phase when the runner reports it via onCost', async () => {
+    const fakeCost = { totalTokens: 300, costUSD: 0.0033, durationMs: 1200, source: 'estimated' as const };
+    agentRunner.runPhase = vi.fn().mockImplementation(
+      (_w: string, _p: string, _f: string, _a: any, _u: any, _onData: any, onCost: any) => {
+        onCost?.(fakeCost);
+        return Promise.resolve(0);
+      }
+    );
+
+    const state = await service.runPhase('/workspace', 'specification', 'auth', { agentType: 'claude' });
+    const spec = state.features.find(f => f.name === 'auth')!.phases.find(p => p.phase === 'specification')!;
+    expect(spec.cost).toEqual(fakeCost);
+  });
+
   it('should auto-review implementation phase upon completion inside runPhase', async () => {
     agentRunner.runPhase.mockResolvedValue(0);
     workspaceRepo.readFile.mockResolvedValue('- [x] task 1\n- [x] task 2');

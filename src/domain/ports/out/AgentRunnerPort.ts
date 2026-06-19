@@ -1,4 +1,4 @@
-import { WorkflowPhase, AgentConfig, PersonaConfig, PersonaId } from '../../models/types';
+import { WorkflowPhase, AgentConfig, PersonaConfig, PersonaId, CostMetadata } from '../../models/types';
 
 export interface AgentRunnerPort {
   runPhase(
@@ -7,7 +7,9 @@ export interface AgentRunnerPort {
     featureName: string | null,
     agentConfig: AgentConfig,
     userPrompt?: string,
-    onData?: (text: string) => void
+    onData?: (text: string) => void,
+    // Invoked once at process exit with the captured cost/usage of the run.
+    onCost?: (cost: CostMetadata) => void
   ): Promise<number>;
   // Runs a single review-gate persona as its own tracked CLI process.
   runPersona(
@@ -15,7 +17,8 @@ export interface AgentRunnerPort {
     featureName: string,
     persona: PersonaConfig,
     agentConfig: AgentConfig,
-    onData?: (text: string) => void
+    onData?: (text: string) => void,
+    onCost?: (cost: CostMetadata) => void
   ): Promise<number>;
   // personaId targets a running persona process; omit it to target the phase process.
   writeStdin(

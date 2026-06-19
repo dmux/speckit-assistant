@@ -61,7 +61,7 @@ const COLUMN_HEADERS: Record<string, string> = {
   clarification: 'Clarification',
   planning: 'Planning',
   checklist: 'Checklist',
-  analysis: 'Analysis',
+  analyze: 'Analysis',
   tasks: 'Tasks',
   taskstoissues: 'Tasks to Issues',
   implementation: 'Implementation',

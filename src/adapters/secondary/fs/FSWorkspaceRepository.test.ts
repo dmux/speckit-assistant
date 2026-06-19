@@ -151,6 +151,77 @@ describe('FSWorkspaceRepository - Demo Integration Test', () => {
     expect(implAfter.personas?.find(p => p.id === 'qa')?.status).toBe('failed');
   });
 
+  it('reconciles a checklist/ directory into multiple phase files (sorted, first as primary)', async () => {
+    const repo = new FSWorkspaceRepository();
+    const feature = '002-shopping-cart';
+    const checklistDir = path.join(tempPath, 'specs', feature, 'checklist');
+    fs.mkdirSync(checklistDir, { recursive: true });
+    // Write out of alphabetical order to verify sorting.
+    fs.writeFileSync(path.join(checklistDir, 'ux.md'), '# UX Checklist\n- [ ] a', 'utf-8');
+    fs.writeFileSync(path.join(checklistDir, 'api.md'), '# API Checklist\n- [ ] b', 'utf-8');
+
+    const state = await repo.getWorkflowState(tempPath);
+    const feat = state.features.find(f => f.name === feature)!;
+    const checklist = feat.phases.find(p => p.phase === 'checklist')!;
+
+    expect(checklist.status).toBe('awaiting_review');
+    expect(checklist.files?.map(f => path.basename(f.path))).toEqual(['api.md', 'ux.md']);
+    // filePath/content point at the first (sorted) file.
+    expect(path.basename(checklist.filePath!)).toBe('api.md');
+    expect(checklist.content).toContain('API Checklist');
+  });
+
+  it('reconciles a single checklist.md file without populating files', async () => {
+    const repo = new FSWorkspaceRepository();
+    const feature = '002-shopping-cart';
+    fs.writeFileSync(
+      path.join(tempPath, 'specs', feature, 'checklist.md'),
+      '# Checklist\n- [ ] one',
+      'utf-8'
+    );
+
+    const state = await repo.getWorkflowState(tempPath);
+    const checklist = state.features.find(f => f.name === feature)!
+      .phases.find(p => p.phase === 'checklist')!;
+
+    expect(checklist.status).toBe('awaiting_review');
+    expect(checklist.files).toBeUndefined();
+    expect(path.basename(checklist.filePath!)).toBe('checklist.md');
+    expect(checklist.content).toContain('Checklist');
+  });
+
+  it('leaves the checklist phase idle when neither checklist.md nor checklist/ exists', async () => {
+    const repo = new FSWorkspaceRepository();
+    const feature = '002-shopping-cart';
+
+    const state = await repo.getWorkflowState(tempPath);
+    const checklist = state.features.find(f => f.name === feature)!
+      .phases.find(p => p.phase === 'checklist')!;
+
+    expect(checklist.status).toBe('idle');
+    expect(checklist.filePath).toBeNull();
+    expect(checklist.files).toBeUndefined();
+  });
+
+  it('persists and reloads captured cost metadata on phases and personas', async () => {
+    const repo = new FSWorkspaceRepository();
+    const feature = '001-user-authentication';
+
+    const state = await repo.getWorkflowState(tempPath);
+    const feat = state.features.find(f => f.name === feature)!;
+    const spec = feat.phases.find(p => p.phase === 'specification')!;
+    spec.cost = { totalTokens: 420, costUSD: 0.012, durationMs: 3000, source: 'estimated' };
+    const impl = feat.phases.find(p => p.phase === 'implementation')!;
+    impl.personas = [{ id: 'qa', status: 'passed', cost: { totalTokens: 100, costUSD: 0.004, durationMs: 900, source: 'parsed' } }];
+    await repo.saveWorkflowState(tempPath, state);
+
+    const reloaded = await repo.getWorkflowState(tempPath);
+    const reFeat = reloaded.features.find(f => f.name === feature)!;
+    expect(reFeat.phases.find(p => p.phase === 'specification')!.cost).toEqual(spec.cost);
+    const reImpl = reFeat.phases.find(p => p.phase === 'implementation')!;
+    expect(reImpl.personas?.find(p => p.id === 'qa')?.cost).toEqual(impl.personas![0].cost);
+  });
+
   it('preserves approved phase statuses during reconciliation even if phase file is missing', async () => {
     const repo = new FSWorkspaceRepository();
     const feature = '002-shopping-cart';

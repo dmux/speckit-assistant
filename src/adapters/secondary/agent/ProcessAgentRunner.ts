@@ -4,9 +4,11 @@ import {
   AgentConfig,
   PersonaConfig,
   PersonaId,
+  CostMetadata,
 } from "../../../domain/models/types";
 import type * as pty from "node-pty";
 import { loadPty } from "../pty/ptyLoader";
+import { meter } from "../../../domain/services/CostMeter";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -104,6 +106,7 @@ export class ProcessAgentRunner implements AgentRunnerPort {
     agentConfig: AgentConfig,
     userPrompt?: string,
     onData?: (text: string) => void,
+    onCost?: (cost: CostMetadata) => void,
   ): Promise<number> {
     const specArg =
       phase !== "constitution" && featureName ? `specs/${featureName}` : null;
@@ -119,6 +122,7 @@ export class ProcessAgentRunner implements AgentRunnerPort {
       agentConfig,
       fullPrompt,
       onData,
+      onCost,
     });
   }
 
@@ -128,6 +132,7 @@ export class ProcessAgentRunner implements AgentRunnerPort {
     persona: PersonaConfig,
     agentConfig: AgentConfig,
     onData?: (text: string) => void,
+    onCost?: (cost: CostMetadata) => void,
   ): Promise<number> {
     // Personas always operate on a specific feature's artifacts.
     const fullPrompt = `${persona.command} specs/${featureName}`;
@@ -139,6 +144,7 @@ export class ProcessAgentRunner implements AgentRunnerPort {
       agentConfig,
       fullPrompt,
       onData,
+      onCost,
       persona,
     });
   }
@@ -153,11 +159,17 @@ export class ProcessAgentRunner implements AgentRunnerPort {
     agentConfig: AgentConfig;
     fullPrompt: string;
     onData?: (text: string) => void;
+    onCost?: (cost: CostMetadata) => void;
     persona?: PersonaConfig;
   }): Promise<number> {
-    const { workspacePath, procKey, doneTag, agentConfig, fullPrompt, onData } =
+    const { workspacePath, procKey, doneTag, agentConfig, fullPrompt, onData, onCost } =
       opts;
     const { cmd, args, stdin } = this.buildSpawnArgs(agentConfig, fullPrompt);
+
+    // Buffer all terminal output and measure wall-clock duration so we can
+    // compute a model/CLI-agnostic cost estimate when the process exits.
+    let fullOutput = "";
+    const startTime = Date.now();
 
     return new Promise((resolve) => {
       onData?.(`Running: ${cmd} ${args.join(" ")}\n\n`);
@@ -220,12 +232,27 @@ export class ProcessAgentRunner implements AgentRunnerPort {
       }
 
       child.onData((data: string) => {
+        fullOutput += data;
         onData?.(data);
       });
 
       child.onExit(({ exitCode }: { exitCode: number }) => {
         this.activeProcesses.delete(procKey);
         onData?.(`\nProcess exited with code ${exitCode}\n`);
+
+        // Compute and emit the agnostic cost/usage estimate for this run.
+        try {
+          const cost = meter({
+            agentType: agentConfig.agentType,
+            model: opts.persona?.model ?? agentConfig.model,
+            promptText: fullPrompt,
+            outputText: fullOutput,
+            durationMs: Date.now() - startTime,
+          });
+          onCost?.(cost);
+        } catch {
+          // cost capture is best-effort; never block the run on it
+        }
 
         // Write the phase done file so local watch logs it
         try {

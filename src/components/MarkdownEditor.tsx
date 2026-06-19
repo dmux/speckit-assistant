@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Edit2, Eye, Save, Columns, Maximize2, Minimize2, Bold, Italic, Heading, Link, Code, Table, CheckSquare } from 'lucide-react';
-import { WorkflowState } from '@/domain/models/types';
+import { WorkflowState, PhaseFile } from '@/domain/models/types';
+import { MarkdownPreview } from './MarkdownPreview';
 
 const TABS = [
   { phase: 'constitution', label: 'Constitution', file: 'constitution.md', defaultPath: () => '.specify/memory/constitution.md' },
@@ -123,6 +124,33 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
     return phaseState?.status || 'idle';
   };
 
+  const normalizePath = (p: string) => p.replace(/\\/g, '/').toLowerCase();
+  const pathsMatch = (a: string | null | undefined, b: string | null | undefined) => {
+    if (!a || !b) return false;
+    const na = normalizePath(a);
+    const nb = normalizePath(b);
+    return na === nb || na.endsWith(nb) || nb.endsWith(na);
+  };
+
+  // Files of the multi-file phase (e.g. a checklist/ directory) that the
+  // currently selected file belongs to — drives the per-file sub-bar.
+  const activePhaseFiles: PhaseFile[] | undefined = (() => {
+    if (!filePath || !state?.activeFeatureName) return undefined;
+    const activeFeature = state.features.find(f => f.name === state.activeFeatureName);
+    return activeFeature?.phases.find(
+      p => (p.files?.length ?? 0) > 1 && p.files!.some(f => pathsMatch(f.path, filePath))
+    )?.files;
+  })();
+
+  // When the selected file changes, sync the editor to its content. Runs before
+  // the initialContent effect below so that one sees no divergence and skips.
+  useEffect(() => {
+    setContent(initialContent || '');
+    setExternalChange(false);
+    lastInitialContentRef.current = initialContent;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filePath]);
+
   useEffect(() => {
     if (initialContent !== lastInitialContentRef.current) {
       if (initialContent === content) {
@@ -159,248 +187,6 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
     setExternalChange(false);
   };
 
-  const parseInlineMarkdown = (text: string): React.ReactNode[] => {
-    // Basic regex parser for inline code `code`, bold **bold**, italic *italic*
-    const parts: React.ReactNode[] = [];
-    let currentText = text;
-    let key = 0;
-
-    while (currentText.length > 0) {
-      const boldMatch = currentText.match(/^([^\*]*)\*\*([^\*]+)\*\*(.*)/);
-      const codeMatch = currentText.match(/^([^`]*)`([^`]+)`(.*)/);
-
-      if (codeMatch && (!boldMatch || codeMatch[1].length < boldMatch[1].length)) {
-        if (codeMatch[1]) {
-          parts.push(<span key={key++}>{codeMatch[1]}</span>);
-        }
-        parts.push(
-          <code key={key++} className="px-1 py-0.5 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded font-mono text-xs text-red-500 dark:text-red-400">
-            {codeMatch[2]}
-          </code>
-        );
-        currentText = codeMatch[3];
-      } else if (boldMatch) {
-        if (boldMatch[1]) {
-          parts.push(<span key={key++}>{boldMatch[1]}</span>);
-        }
-        parts.push(<strong key={key++} className="font-semibold text-zinc-900 dark:text-zinc-100">{boldMatch[2]}</strong>);
-        currentText = boldMatch[3];
-      } else {
-        parts.push(<span key={key++}>{currentText}</span>);
-        break;
-      }
-    }
-
-    return parts.length > 0 ? parts : [text];
-  };
-
-  const renderPreview = () => {
-    if (!content) {
-      return <p className="text-zinc-400 italic text-sm">No content to display.</p>;
-    }
-
-    const lines = content.split('\n');
-    let insideCodeBlock = false;
-    let codeBlockContent: string[] = [];
-
-    const elements: React.ReactNode[] = [];
-
-    for (let idx = 0; idx < lines.length; idx++) {
-      const line = lines[idx];
-
-      // Handle code blocks ```
-      if (line.trim().startsWith('```')) {
-        if (insideCodeBlock) {
-          insideCodeBlock = false;
-          elements.push(
-            <pre key={`code-${idx}`} className="p-3 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded font-mono text-xs overflow-x-auto text-zinc-800 dark:text-zinc-200 my-3">
-              <code>{codeBlockContent.join('\n')}</code>
-            </pre>
-          );
-          codeBlockContent = [];
-        } else {
-          insideCodeBlock = true;
-        }
-        continue;
-      }
-
-      if (insideCodeBlock) {
-        codeBlockContent.push(line);
-        continue;
-      }
-
-      // Check if we are starting a table (header row + separator row)
-      if (
-        line.trim().startsWith('|') &&
-        idx + 1 < lines.length &&
-        lines[idx + 1].trim().match(/^\|?\s*(:?-+:?\s*\|?)+$/)
-      ) {
-        // We found a table!
-        const headers = line.split('|').map(s => s.trim()).filter((s, hIndex, arr) => {
-          if (hIndex === 0 && s === '') return false;
-          if (hIndex === arr.length - 1 && s === '') return false;
-          return true;
-        });
-
-        const rows: string[][] = [];
-        const startIdx = idx;
-        idx += 2; // skip header and separator lines
-
-        while (idx < lines.length && lines[idx].trim().startsWith('|')) {
-          const rowCells = lines[idx].split('|').map(s => s.trim()).filter((s, rIndex, arr) => {
-            if (rIndex === 0 && s === '') return false;
-            if (rIndex === arr.length - 1 && s === '') return false;
-            return true;
-          });
-          rows.push(rowCells);
-          idx++;
-        }
-        // Adjust idx since the outer loop will do idx++
-        idx--;
-
-        elements.push(
-          <div key={`table-${startIdx}`} className="overflow-x-auto my-4">
-            <table className="min-w-full border-collapse border border-zinc-200 dark:border-zinc-800 text-sm">
-              <thead className="bg-zinc-50 dark:bg-zinc-900/50">
-                <tr>
-                  {headers.map((h, hIdx) => (
-                    <th key={hIdx} className="border border-zinc-200 dark:border-zinc-800 px-4 py-2 text-left font-bold text-zinc-900 dark:text-zinc-100">
-                      {parseInlineMarkdown(h)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, rIdx) => (
-                  <tr key={rIdx} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-900/10 odd:bg-zinc-50/10 dark:odd:bg-zinc-950/10">
-                    {row.map((cell, cIdx) => (
-                      <td key={cIdx} className="border border-zinc-200 dark:border-zinc-800 px-4 py-2 text-zinc-700 dark:text-zinc-350">
-                        {parseInlineMarkdown(cell)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        );
-        continue;
-      }
-
-      // Checkbox list
-      const checkboxMatch = line.match(/^(\s*(?:[-*]|\d+\.)\s+\[)( |x|X)(\])(.*)/);
-      if (checkboxMatch) {
-        const isChecked = checkboxMatch[2].toLowerCase() === 'x';
-        const text = checkboxMatch[4];
-        const indent = line.search(/\S/);
-        elements.push(
-          <div
-            key={idx}
-            className="flex items-start gap-2.5 py-1"
-            style={{ paddingLeft: `${indent * 12}px` }}
-          >
-            <input
-              type="checkbox"
-              checked={isChecked}
-              onChange={(e) => onToggleTask?.(idx, e.target.checked)}
-              className="mt-1 w-4 h-4 rounded border-zinc-300 dark:border-zinc-700 bg-transparent text-black dark:text-white focus:ring-0 cursor-pointer"
-            />
-            <span className={`text-sm leading-relaxed ${isChecked ? 'line-through text-zinc-400 dark:text-zinc-500' : 'text-zinc-800 dark:text-zinc-200'}`}>
-              {parseInlineMarkdown(text)}
-            </span>
-          </div>
-        );
-        continue;
-      }
-
-      // Headers
-      const headerMatch = line.match(/^(#{1,6})\s+(.*)/);
-      if (headerMatch) {
-        const level = headerMatch[1].length;
-        const text = headerMatch[2];
-        const classes = [
-          '',
-          'text-2xl font-bold border-b border-zinc-200 dark:border-zinc-850 pb-1 mt-6 mb-3 text-zinc-900 dark:text-zinc-100', // h1
-          'text-xl font-bold mt-5 mb-2.5 text-zinc-900 dark:text-zinc-100', // h2
-          'text-lg font-semibold mt-4 mb-2 text-zinc-800 dark:text-zinc-200', // h3
-          'text-base font-semibold mt-3 mb-2 text-zinc-800 dark:text-zinc-200', // h4
-          'text-sm font-semibold mt-2.5 mb-1.5 text-zinc-850 dark:text-zinc-250', // h5
-          'text-xs font-semibold mt-2 mb-1 text-zinc-900 dark:text-zinc-300' // h6
-        ];
-        elements.push(
-          React.createElement(
-            `h${level}`,
-            { key: idx, className: classes[level] },
-            parseInlineMarkdown(text)
-          )
-        );
-        continue;
-      }
-
-      // Blockquote / GitHub Alerts
-      const alertMatch = line.match(/^>\s+\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](.*)/i);
-      if (alertMatch) {
-        const type = alertMatch[1].toUpperCase();
-        const text = alertMatch[2];
-        const bgColors = {
-          NOTE: 'bg-zinc-50 dark:bg-zinc-950 border-blue-500 text-zinc-800 dark:text-zinc-200',
-          TIP: 'bg-zinc-50 dark:bg-zinc-950 border-green-500 text-zinc-800 dark:text-zinc-200',
-          IMPORTANT: 'bg-zinc-50 dark:bg-zinc-950 border-purple-500 text-zinc-800 dark:text-zinc-200',
-          WARNING: 'bg-zinc-50 dark:bg-zinc-950 border-amber-500 text-zinc-800 dark:text-zinc-200',
-          CAUTION: 'bg-zinc-50 dark:bg-zinc-950 border-red-500 text-zinc-800 dark:text-zinc-200'
-        };
-        elements.push(
-          <div key={idx} className={`p-3.5 border-l-4 my-3 rounded-r text-sm font-medium ${bgColors[type as keyof typeof bgColors]}`}>
-            <div className="font-bold text-xs tracking-wider mb-1 text-zinc-400">{type}</div>
-            <div>{parseInlineMarkdown(text)}</div>
-          </div>
-        );
-        continue;
-      }
-
-      if (line.startsWith('>')) {
-        elements.push(
-          <blockquote key={idx} className="border-l-4 border-zinc-200 dark:border-zinc-800 pl-4 py-1.5 my-3 text-zinc-500 italic text-sm">
-            {parseInlineMarkdown(line.substring(1).trim())}
-          </blockquote>
-        );
-        continue;
-      }
-
-      // Horizontal line
-      if (line.trim() === '---') {
-        elements.push(<hr key={idx} className="my-6 border-zinc-200 dark:border-zinc-800" />);
-        continue;
-      }
-
-      // Bullet points
-      if (line.trim().startsWith('- ') || line.trim().startsWith('* ')) {
-        const text = line.trim().substring(2);
-        elements.push(
-          <li key={idx} className="ml-4 list-disc text-sm leading-relaxed text-zinc-700 dark:text-zinc-300 my-0.5">
-            {parseInlineMarkdown(text)}
-          </li>
-        );
-        continue;
-      }
-
-      // Empty line
-      if (line.trim() === '') {
-        elements.push(<div key={idx} className="h-2" />);
-        continue;
-      }
-
-      // Regular paragraph
-      elements.push(
-        <p key={idx} className="text-sm leading-relaxed text-zinc-700 dark:text-zinc-300 my-1">
-          {parseInlineMarkdown(line)}
-        </p>
-      );
-    }
-
-    return <div className="space-y-1">{elements}</div>;
-  };
-
   return (
     <div className="flex flex-col h-full border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black rounded-lg overflow-hidden">
       {/* File Tab Bar */}
@@ -410,10 +196,12 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
             const tabPath = getTabPath(tab);
             const isDisabled = tab.phase !== 'constitution' && !state?.activeFeatureName;
             const status = getPhaseStatus(tab.phase);
-            const isActive = !isDisabled && tabPath && filePath && (
-              tabPath.replace(/\\/g, '/').toLowerCase() === filePath.replace(/\\/g, '/').toLowerCase() ||
-              filePath.replace(/\\/g, '/').toLowerCase().endsWith(tabPath.replace(/\\/g, '/').toLowerCase()) ||
-              tabPath.replace(/\\/g, '/').toLowerCase().endsWith(filePath.replace(/\\/g, '/').toLowerCase())
+            const tabFiles = state?.features
+              .find(f => f.name === state?.activeFeatureName)
+              ?.phases.find(p => p.phase === tab.phase)?.files;
+            const isActive = !isDisabled && !!filePath && (
+              pathsMatch(tabPath, filePath) ||
+              (tabFiles?.some(f => pathsMatch(f.path, filePath)) ?? false)
             );
 
             // Dot classes
@@ -437,6 +225,29 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
               >
                 <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
                 <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Per-file sub-bar for phases that resolve to a directory of .md files */}
+      {state && onSelectFile && activePhaseFiles && activePhaseFiles.length > 1 && (
+        <div className="flex items-center gap-1 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/30 dark:bg-zinc-950/20 overflow-x-auto scrollbar-none shrink-0">
+          {activePhaseFiles.map((file) => {
+            const isFileActive = pathsMatch(file.path, filePath);
+            const name = file.path.replace(/\\/g, '/').split('/').pop();
+            return (
+              <button
+                key={file.path}
+                onClick={() => onSelectFile(file.path)}
+                className={`px-2.5 py-1 text-[11px] font-mono rounded border transition shrink-0 ${
+                  isFileActive
+                    ? 'text-black dark:text-white border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900'
+                    : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 border-transparent hover:bg-zinc-100/50 dark:hover:bg-zinc-900/40'
+                }`}
+              >
+                {name}
               </button>
             );
           })}
@@ -597,7 +408,7 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
             {/* Preview Panel */}
             {(mode === 'preview' || mode === 'split') && (
               <div className="flex-1 p-5 overflow-y-auto bg-transparent prose dark:prose-invert max-w-none">
-                {renderPreview()}
+                <MarkdownPreview content={content} onToggleTask={onToggleTask} />
               </div>
             )}
           </div>

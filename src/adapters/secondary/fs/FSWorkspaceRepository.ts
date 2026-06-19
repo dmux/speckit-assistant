@@ -60,7 +60,6 @@ export class FSWorkspaceRepository implements WorkspaceRepositoryPort {
         const fileMap: Array<{ file: string; phase: WorkflowPhase }> = [
           { file: 'spec.md', phase: 'specification' },
           { file: 'plan.md', phase: 'planning' },
-          { file: 'checklist.md', phase: 'checklist' },
           { file: 'analysis.md', phase: 'analyze' },
           { file: 'tasks.md', phase: 'tasks' }
         ];
@@ -80,6 +79,44 @@ export class FSWorkspaceRepository implements WorkspaceRepositoryPort {
             if (!this.isUserState(ps.status)) {
               ps.status = 'idle';
             }
+          }
+        }
+
+        // Reconcile checklist: spec-kit may emit either a single checklist.md
+        // file or a checklist/ directory containing multiple .md files.
+        const checklistPhase = feature.phases.find(p => p.phase === 'checklist')!;
+        const checklistFile = path.join(specsDir, feature.name, 'checklist.md');
+        const checklistDir = path.join(specsDir, feature.name, 'checklist');
+        if (fs.existsSync(checklistFile) && fs.statSync(checklistFile).isFile()) {
+          checklistPhase.filePath = checklistFile;
+          checklistPhase.content = fs.readFileSync(checklistFile, 'utf-8');
+          delete checklistPhase.files;
+          if (checklistPhase.status === 'idle') {
+            checklistPhase.status = 'awaiting_review';
+          }
+        } else if (fs.existsSync(checklistDir) && fs.statSync(checklistDir).isDirectory()) {
+          const files = this.readMarkdownDir(checklistDir);
+          if (files.length > 0) {
+            checklistPhase.files = files;
+            checklistPhase.filePath = files[0].path;
+            checklistPhase.content = files[0].content;
+            if (checklistPhase.status === 'idle') {
+              checklistPhase.status = 'awaiting_review';
+            }
+          } else {
+            checklistPhase.filePath = null;
+            checklistPhase.content = null;
+            delete checklistPhase.files;
+            if (!this.isUserState(checklistPhase.status)) {
+              checklistPhase.status = 'idle';
+            }
+          }
+        } else {
+          checklistPhase.filePath = null;
+          checklistPhase.content = null;
+          delete checklistPhase.files;
+          if (!this.isUserState(checklistPhase.status)) {
+            checklistPhase.status = 'idle';
           }
         }
 
@@ -152,7 +189,8 @@ export class FSWorkspaceRepository implements WorkspaceRepositoryPort {
       constitutionPhase: {
         phase: state.constitutionPhase.phase,
         status: state.constitutionPhase.status,
-        stale: state.constitutionPhase.stale
+        stale: state.constitutionPhase.stale,
+        ...(state.constitutionPhase.cost ? { cost: state.constitutionPhase.cost } : {})
       },
       features: state.features.map(f => ({
         name: f.name,
@@ -160,8 +198,10 @@ export class FSWorkspaceRepository implements WorkspaceRepositoryPort {
           phase: p.phase,
           status: p.status,
           stale: p.stale,
-          // Persist the implementation review-gate persona statuses.
-          ...(p.personas ? { personas: p.personas.map(ps => ({ id: ps.id, status: ps.status })) } : {})
+          // Persist the captured cost/usage of the last run for this phase.
+          ...(p.cost ? { cost: p.cost } : {}),
+          // Persist the implementation review-gate persona statuses (and their cost).
+          ...(p.personas ? { personas: p.personas.map(ps => ({ id: ps.id, status: ps.status, ...(ps.cost ? { cost: ps.cost } : {}) })) } : {})
         }))
       })),
       activeFeatureName: state.activeFeatureName
@@ -248,6 +288,20 @@ export class FSWorkspaceRepository implements WorkspaceRepositoryPort {
     fs.writeFileSync(absolutePath, content, 'utf-8');
   }
 
+  // Read all .md files (one level deep) from a directory, sorted by filename,
+  // returning their absolute path and content.
+  private readMarkdownDir(dir: string): { path: string; content: string }[] {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    return entries
+      .filter(e => e.isFile() && e.name.toLowerCase().endsWith('.md'))
+      .map(e => e.name)
+      .sort()
+      .map(name => {
+        const fp = path.join(dir, name);
+        return { path: fp, content: fs.readFileSync(fp, 'utf-8') };
+      });
+  }
+
   private isPathSafe(workspacePath: string, absolutePath: string): boolean {
     const normWorkspace = path.normalize(workspacePath).replace(/\\/g, '/').toLowerCase();
     const normAbsolute = path.normalize(absolutePath).replace(/\\/g, '/').toLowerCase();
@@ -293,7 +347,8 @@ export class FSWorkspaceRepository implements WorkspaceRepositoryPort {
       const state = this.defaultWorkflowState();
       state.constitutionPhase.status = data.constitutionPhase?.status || 'idle';
       state.constitutionPhase.stale = data.constitutionPhase?.stale || false;
-      
+      if (data.constitutionPhase?.cost) state.constitutionPhase.cost = data.constitutionPhase.cost;
+
       if (Array.isArray(data.features)) {
         state.features = data.features.map((f: any) => ({
           name: f.name,
@@ -305,8 +360,9 @@ export class FSWorkspaceRepository implements WorkspaceRepositoryPort {
               stale: savedPhase?.stale || false,
               filePath: null,
               content: null,
+              ...(savedPhase?.cost ? { cost: savedPhase.cost } : {}),
               ...(Array.isArray(savedPhase?.personas)
-                ? { personas: savedPhase.personas.map((ps: any) => ({ id: ps.id, status: ps.status || 'idle' })) }
+                ? { personas: savedPhase.personas.map((ps: any) => ({ id: ps.id, status: ps.status || 'idle', ...(ps.cost ? { cost: ps.cost } : {}) })) }
                 : {})
             };
           })

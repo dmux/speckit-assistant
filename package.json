@@ -53,6 +53,7 @@
     "open": "^10.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-syntax-highlighter": "^16.1.1",
     "tailwind-merge": "^2.5.5"
   },
   "devDependencies": {
@@ -62,6 +63,7 @@
     "@types/node": "^20.17.9",
     "@types/react": "^19.0.1",
     "@types/react-dom": "^19.0.2",
+    "@types/react-syntax-highlighter": "^15.5.13",
     "@vitest/coverage-v8": "^2.1.9",
     "autoprefixer": "^10.4.20",
     "jsdom": "^29.1.1",

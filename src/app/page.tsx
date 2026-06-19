@@ -1073,6 +1073,7 @@ export default function Dashboard() {
           onClose={() => setAuditingFeature(null)}
           featureName={auditingFeature.name}
           activePhaseState={auditingFeature.phaseState}
+          theme={theme}
           onApprove={() => {
             handleApprovePhase('implementation', auditingFeature.name);
             setAuditingFeature(null);

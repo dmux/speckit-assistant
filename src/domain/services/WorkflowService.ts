@@ -10,6 +10,7 @@ import {
   PersonaConfig,
   PersonaId,
   PersonaRunStatus,
+  CostMetadata,
 } from '../models/types';
 import { orderPersonas, personaReportPath } from '../models/personas';
 
@@ -73,17 +74,21 @@ export class WorkflowService implements WorkflowUseCases {
     await this.workspaceRepo.saveWorkflowState(workspacePath, state);
 
     try {
+      let runCost: CostMetadata | undefined;
       const exitCode = await this.agentRunner.runPhase(
         workspacePath,
         phase,
         targetFeature,
         agentConfig,
         userPrompt,
-        onData
+        onData,
+        (c) => { runCost = c; }
       );
 
       // Re-read state in case files changed on disk during run
       const freshState = await this.workspaceRepo.getWorkflowState(workspacePath);
+      const runPhaseState = this.findPhase(freshState, phase, targetFeature);
+      if (runPhaseState && runCost) runPhaseState.cost = runCost;
 
       if (exitCode !== 0) {
         this.setPhaseStatus(freshState, phase, targetFeature, 'idle');
@@ -148,16 +153,19 @@ export class WorkflowService implements WorkflowUseCases {
 
       onData?.(`\r\n\x1b[36m=== Persona: ${persona.label} (${persona.command}) ===\x1b[0m\r\n`);
 
+      let personaCost: CostMetadata | undefined;
       const exitCode = await this.agentRunner.runPersona(
         workspacePath,
         featureName,
         persona,
         agentConfig,
-        onData
+        onData,
+        (c) => { personaCost = c; }
       );
 
       const verdict = await this.resolvePersonaVerdict(workspacePath, featureName, persona.id, exitCode);
       ps.status = verdict;
+      if (personaCost) ps.cost = personaCost;
       await this.workspaceRepo.saveWorkflowState(workspacePath, state);
 
       if (verdict === 'failed') {
