@@ -24,6 +24,10 @@ import MarkdownEditor from '@/components/MarkdownEditor';
 import AgentConsole, { type AgentConsoleHandle } from '@/components/AgentConsole';
 import { PersonaEditorModal } from '@/components/PersonaEditorModal';
 import { HumanReviewModal } from '@/components/HumanReviewModal';
+import AgentsPanel from '@/components/AgentsPanel';
+import McpPanel from '@/components/McpPanel';
+import { AgentsFile, DEFAULT_AGENTS, toAgentConfig, activeAgent } from '@/domain/models/agents';
+import { McpFile, DEFAULT_MCP } from '@/domain/models/mcp';
 import {
   Sun,
   Moon,
@@ -37,11 +41,12 @@ import {
   ChevronRight,
   ChevronLeft,
   Folder,
-  Settings,
   Sparkles,
   Maximize2,
   Minimize2,
-  ShieldCheck
+  ShieldCheck,
+  Bot,
+  Plug
 } from 'lucide-react';
 
 const PHASE_LABELS: Record<WorkflowPhase, string> = {
@@ -62,19 +67,21 @@ export default function Dashboard() {
   const [selectedFile, setSelectedFile] = useState<{ path: string; content: string } | null>(null);
   
   const [viewMode, setViewMode] = useState<'kanban' | 'dag'>('kanban');
+  const [section, setSection] = useState<'workflow' | 'agents' | 'mcp'>('workflow');
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [agentConfig, setAgentConfig] = useState<AgentConfig>({
     agentType: 'claude',
     customCommand: '',
     agentPath: '',
   });
+  const [agentsFile, setAgentsFile] = useState<AgentsFile>(DEFAULT_AGENTS);
+  const [mcpFile, setMcpFile] = useState<McpFile>(DEFAULT_MCP);
   const [prompt, setPrompt] = useState<string>('');
   const [personaConfigs, setPersonaConfigs] = useState<PersonaConfig[]>(DEFAULT_PERSONAS);
   const [editingPersona, setEditingPersona] = useState<PersonaConfig | null>(null);
   const [auditingFeature, setAuditingFeature] = useState<{ name: string; phaseState: PhaseState } | null>(null);
   const [newFeatureName, setNewFeatureName] = useState<string>('');
   const [running, setRunning] = useState<boolean>(false);
-  const [showConfig, setShowConfig] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'editor' | 'console' | 'terminal'>('editor');
   const [runningPhase, setRunningPhase] = useState<{ phase: WorkflowPhase; featureName: string | null } | null>(null);
   const [isEditorMaximized, setIsEditorMaximized] = useState<boolean>(false);
@@ -109,7 +116,9 @@ export default function Dashboard() {
   useEffect(() => {
     fetchState();
     fetchPersonas();
-    
+    fetchAgents();
+    fetchMcp();
+
     // Default to light mode
     const root = window.document.documentElement;
     root.classList.remove('dark');
@@ -156,6 +165,78 @@ export default function Dashboard() {
       }
     } catch (err) {
       console.error('Failed to fetch personas:', err);
+    }
+  };
+
+  const fetchAgents = async () => {
+    try {
+      const res = await fetch('/api/agents');
+      if (res.ok) setAgentsFile(await res.json());
+    } catch (err) {
+      console.error('Failed to fetch agents:', err);
+    }
+  };
+
+  const fetchMcp = async () => {
+    try {
+      const res = await fetch('/api/mcp');
+      if (res.ok) setMcpFile(await res.json());
+    } catch (err) {
+      console.error('Failed to fetch MCP servers:', err);
+    }
+  };
+
+  // Keep the runner's AgentConfig in sync with the active agent profile.
+  useEffect(() => {
+    const a = activeAgent(agentsFile);
+    if (a) setAgentConfig(toAgentConfig(a));
+  }, [agentsFile]);
+
+  const handleSaveAgents = async (file: AgentsFile) => {
+    setAgentsFile(file);
+    try {
+      await fetch('/api/agents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(file),
+      });
+    } catch (err) {
+      console.error('Failed to save agents:', err);
+    }
+  };
+
+  const handleSaveMcp = async (file: McpFile) => {
+    setMcpFile(file);
+    try {
+      await fetch('/api/mcp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(file),
+      });
+    } catch (err) {
+      console.error('Failed to save MCP servers:', err);
+    }
+  };
+
+  const handleApplyMcp = async (agentId: string) => {
+    const res = await fetch('/api/mcp/apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId }),
+    });
+    return res.json();
+  };
+
+  const handleSavePersonasList = async (next: PersonaConfig[]) => {
+    setPersonaConfigs(next);
+    try {
+      await fetch('/api/personas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(next),
+      });
+    } catch (err) {
+      console.error('Failed to save personas:', err);
     }
   };
 
@@ -636,55 +717,68 @@ export default function Dashboard() {
 
         {/* Top Control Bar */}
         <div className="flex items-center gap-3">
-          {/* Mode Selector */}
+          {/* Section Selector */}
           <div className="flex items-center bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-0.5">
-            <button
-              onClick={() => setViewMode('kanban')}
-              className={`p-1.5 rounded-md transition text-xs flex items-center gap-1.5 ${viewMode === 'kanban' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-50 shadow-sm' : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'}`}
-            >
-              <LayoutGrid size={13} />
-              <span>Kanban</span>
-            </button>
-            <button
-              onClick={() => setViewMode('dag')}
-              className={`p-1.5 rounded-md transition text-xs flex items-center gap-1.5 ${viewMode === 'dag' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-50 shadow-sm' : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'}`}
-            >
-              <GitFork size={13} />
-              <span>DAG Map</span>
-            </button>
+            {([
+              { id: 'workflow', label: 'Workflow', icon: <LayoutGrid size={13} /> },
+              { id: 'agents', label: 'Agents', icon: <Bot size={13} /> },
+              { id: 'mcp', label: 'MCP Tools', icon: <Plug size={13} /> },
+            ] as const).map(s => (
+              <button
+                key={s.id}
+                onClick={() => setSection(s.id)}
+                className={`px-2.5 py-1.5 rounded-md transition text-xs flex items-center gap-1.5 font-semibold ${section === s.id ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-50 shadow-sm' : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'}`}
+              >
+                {s.icon}
+                <span>{s.label}</span>
+              </button>
+            ))}
           </div>
 
-          {/* Settings button */}
-          <button
-            onClick={() => setShowConfig(!showConfig)}
-            className={`p-2 border border-zinc-200 dark:border-zinc-800 rounded-lg transition hover:bg-zinc-100 dark:hover:bg-zinc-900 ${showConfig ? 'bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-zinc-50' : 'text-zinc-500'}`}
-            title="Configure AI Agent"
-          >
-            <Settings size={14} />
-          </button>
+          {section === 'workflow' && (
+            <>
+              {/* Mode Selector */}
+              <div className="flex items-center bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-0.5">
+                <button
+                  onClick={() => setViewMode('kanban')}
+                  className={`p-1.5 rounded-md transition text-xs flex items-center gap-1.5 ${viewMode === 'kanban' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-50 shadow-sm' : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'}`}
+                >
+                  <LayoutGrid size={13} />
+                  <span>Kanban</span>
+                </button>
+                <button
+                  onClick={() => setViewMode('dag')}
+                  className={`p-1.5 rounded-md transition text-xs flex items-center gap-1.5 ${viewMode === 'dag' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-50 shadow-sm' : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'}`}
+                >
+                  <GitFork size={13} />
+                  <span>DAG Map</span>
+                </button>
+              </div>
 
-          {/* Review Portal / Audit Trigger */}
-          <button
-            onClick={() => {
-              const activeFeatureName = state?.activeFeatureName;
-              const activeFeature = state?.features.find(f => f.name === activeFeatureName);
-              const implPhase = activeFeature?.phases.find(p => p.phase === 'implementation') || {
-                phase: 'implementation',
-                status: 'idle',
-                filePath: null,
-                content: null
-              };
-              setAuditingFeature({
-                name: activeFeatureName || 'Workspace',
-                phaseState: implPhase
-              });
-            }}
-            className="p-2 border border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition hover:bg-zinc-100 dark:hover:bg-zinc-900 flex items-center gap-1.5 text-xs font-semibold"
-            title="Open Human Review Portal"
-          >
-            <ShieldCheck size={14} className="text-blue-500" />
-            <span className="hidden sm:inline">Review Portal</span>
-          </button>
+              {/* Review Portal / Audit Trigger */}
+              <button
+                onClick={() => {
+                  const activeFeatureName = state?.activeFeatureName;
+                  const activeFeature = state?.features.find(f => f.name === activeFeatureName);
+                  const implPhase = activeFeature?.phases.find(p => p.phase === 'implementation') || {
+                    phase: 'implementation',
+                    status: 'idle',
+                    filePath: null,
+                    content: null
+                  };
+                  setAuditingFeature({
+                    name: activeFeatureName || 'Workspace',
+                    phaseState: implPhase
+                  });
+                }}
+                className="p-2 border border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition hover:bg-zinc-100 dark:hover:bg-zinc-900 flex items-center gap-1.5 text-xs font-semibold"
+                title="Open Human Review Portal"
+              >
+                <ShieldCheck size={14} className="text-blue-500" />
+                <span className="hidden sm:inline">Review Portal</span>
+              </button>
+            </>
+          )}
 
           {/* Theme Switcher */}
           <button
@@ -698,7 +792,25 @@ export default function Dashboard() {
 
       {/* Main body split container */}
       <div className="flex-1 flex overflow-hidden min-h-0">
-        
+
+        {section === 'agents' && (
+          <AgentsPanel
+            agentsFile={agentsFile}
+            mcpServers={mcpFile.servers}
+            personaConfigs={personaConfigs}
+            onSaveAgents={handleSaveAgents}
+            onSavePersonas={handleSavePersonasList}
+            onEditPersona={setEditingPersona}
+            onApply={handleApplyMcp}
+          />
+        )}
+
+        {section === 'mcp' && (
+          <McpPanel mcpFile={mcpFile} onSave={handleSaveMcp} />
+        )}
+
+        {section === 'workflow' && (
+        <>
         {/* Left Sidebar: Feature Manager */}
         <aside className={`border-r border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/20 flex flex-col shrink-0 transition-all duration-300 ${isSidebarCollapsed ? 'w-12 items-center justify-between py-4' : 'w-64'}`}>
           {isSidebarCollapsed ? (
@@ -842,120 +954,6 @@ export default function Dashboard() {
         {/* Central visual panel (Kanban/DAG) and editor split */}
         <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-white dark:bg-black relative">
           
-          {/* Agent Configuration Modal/Drawer */}
-          {showConfig && (
-            <div className="absolute top-0 left-0 right-0 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black p-4 z-20 shadow-md">
-              <div className="flex justify-between items-center mb-3">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">AI Agent Config</h3>
-                <button onClick={() => setShowConfig(false)} className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded">
-                  <X size={12} />
-                </button>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">Agent CLI</label>
-                  <select
-                    value={agentConfig.agentType}
-                    onChange={(e) => setAgentConfig({ ...agentConfig, agentType: e.target.value as AgentType })}
-                    className="w-full px-3 py-1.5 text-xs bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-md outline-none"
-                  >
-                    <option value="claude">Claude CLI (Anthropic)</option>
-                    <option value="gemini">Gemini CLI (Google)</option>
-                    <option value="copilot">GitHub Copilot (ghcs)</option>
-                    <option value="openai">OpenAI Codex</option>
-                    <option value="custom">Custom Command</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">Custom Binary Path (Optional)</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. /usr/local/bin/claude"
-                    value={agentConfig.agentPath || ''}
-                    onChange={(e) => setAgentConfig({ ...agentConfig, agentPath: e.target.value })}
-                    className="w-full px-3 py-1.5 text-xs bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-md outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">Custom Spawn Shell Command</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. my-agent {{prompt}}"
-                    value={agentConfig.customCommand || ''}
-                    disabled={agentConfig.agentType !== 'custom'}
-                    onChange={(e) => setAgentConfig({ ...agentConfig, customCommand: e.target.value })}
-                    className="w-full px-3 py-1.5 text-xs bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-md outline-none disabled:opacity-50"
-                  />
-                </div>
-              </div>
-
-              {/* Implementation review gate: persona sub-agents run sequentially after /speckit.implement */}
-              <div className="mt-4 pt-4 border-t border-zinc-200 dark:border-zinc-800">
-                <div className="flex items-center justify-between mb-3">
-                  <label className="block text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
-                    Review Gate Agent Personas (runs in order, Tech Lead signs off)
-                  </label>
-                  <span className="text-[10px] text-zinc-500 font-semibold bg-zinc-100 dark:bg-zinc-900 px-2 py-0.5 rounded border border-zinc-200 dark:border-zinc-800">
-                    {personaConfigs.filter(p => p.enabled).length}/{personaConfigs.length} enabled
-                  </span>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {personaConfigs.map((p, idx) => (
-                    <div
-                      key={p.id}
-                      className="flex flex-col justify-between p-3.5 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg hover:border-zinc-300 dark:hover:border-zinc-700 transition"
-                    >
-                      <div className="flex justify-between items-start mb-2">
-                        <div className="flex items-center gap-2.5">
-                          <input
-                            type="checkbox"
-                            checked={p.enabled}
-                            onChange={async (e) => {
-                              const next = [...personaConfigs];
-                              next[idx] = { ...p, enabled: e.target.checked };
-                              setPersonaConfigs(next);
-                              try {
-                                await fetch('/api/personas', {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify(next)
-                                });
-                              } catch (err) {
-                                console.error('Failed to save persona enable state:', err);
-                              }
-                            }}
-                            className="w-4 h-4 rounded border-zinc-300 dark:border-zinc-800 text-blue-500 focus:ring-0 cursor-pointer"
-                          />
-                          <div>
-                            <span className="text-xs font-bold text-zinc-800 dark:text-zinc-200">{p.label}</span>
-                            <span className="ml-1.5 text-[9px] font-mono px-1 py-0.5 rounded bg-zinc-200/50 dark:bg-zinc-900 text-zinc-500 uppercase font-semibold">{p.id}</span>
-                          </div>
-                        </div>
-                        
-                        <button
-                          onClick={() => setEditingPersona(p)}
-                          className="px-2 py-0.5 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-900 text-[10px] font-bold rounded text-blue-500 dark:text-blue-400 transition"
-                        >
-                          Configure
-                        </button>
-                      </div>
-
-                      <p className="text-[10px] text-zinc-500 dark:text-zinc-400 line-clamp-1 mb-2 font-medium">
-                        {p.description || 'No description provided.'}
-                      </p>
-
-                      <div className="flex justify-between items-center text-[9px] text-zinc-500 font-mono">
-                        <span className="truncate max-w-[150px] font-semibold">{p.command}</span>
-                        <span className="shrink-0 px-1 py-0.25 rounded bg-zinc-200 dark:bg-zinc-900 font-semibold">{p.model || 'N/A'}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Split Area: Top (Visual Board), Bottom (Editor or Console) */}
           <div className="flex-1 flex flex-col min-h-0">
             {/* Visualizer Area (Kanban / DAG Map) */}
@@ -1058,6 +1056,8 @@ export default function Dashboard() {
             </div>
           </div>
         </main>
+        </>
+        )}
       </div>
       {editingPersona && (
         <PersonaEditorModal
