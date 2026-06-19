@@ -196,10 +196,22 @@ const PhaseNode: React.FC<NodeProps> = ({ data }: any) => {
   );
 };
 
+// Plain text label for a feature row. A custom node (not ReactFlow's 'default'
+// type) so it renders as text only — no connection handles — since a feature
+// never derives from another.
+const FeatureLabelNode: React.FC<NodeProps> = ({ data }: any) => {
+  return (
+    <div className="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 text-right whitespace-nowrap select-none">
+      {data.label}
+    </div>
+  );
+};
+
 // Node type registry
 const nodeTypes = {
   constitution: ConstitutionNode,
   phase: PhaseNode,
+  featureLabel: FeatureLabelNode,
 };
 
 type DagMapProps = {
@@ -334,23 +346,13 @@ export const DagMap: React.FC<DagMapProps> = ({
         }
       });
 
-      // Side label node for Feature name
+      // Side label node for Feature name (plain text, no handles/edges)
       nodesList.push({
         id: `${feature.name}::label`,
-        type: 'default',
+        type: 'featureLabel',
         position: { x: -140, y: rowY + NODE_H / 2 - 10 },
         data: { label: feature.name },
-        style: {
-          background: 'transparent',
-          border: 'none',
-          fontSize: '11px',
-          color: '#888',
-          fontWeight: 600,
-          width: 120,
-          textAlign: 'right',
-          boxShadow: 'none',
-          pointerEvents: 'none',
-        },
+        style: { width: 120, pointerEvents: 'none' },
         selectable: false,
         draggable: false,
       });

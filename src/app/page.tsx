@@ -62,7 +62,7 @@ export default function Dashboard() {
   const [selectedFile, setSelectedFile] = useState<{ path: string; content: string } | null>(null);
   
   const [viewMode, setViewMode] = useState<'kanban' | 'dag'>('kanban');
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [agentConfig, setAgentConfig] = useState<AgentConfig>({
     agentType: 'claude',
     customCommand: '',
@@ -110,9 +110,9 @@ export default function Dashboard() {
     fetchState();
     fetchPersonas();
     
-    // Default to dark mode
+    // Default to light mode
     const root = window.document.documentElement;
-    root.classList.add('dark');
+    root.classList.remove('dark');
 
     // Live file observer
     const eventSource = new EventSource('/api/state/watch');
