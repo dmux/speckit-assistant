@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Shield, Info } from 'lucide-react';
 import { PersonaConfig } from '../domain/models/types';
+import { MODEL_GROUPS, MODEL_OPTIONS, DEFAULT_MODEL } from '../domain/models/modelOptions';
 
 type PersonaEditorModalProps = {
   isOpen: boolean;
@@ -24,7 +25,7 @@ export const PersonaEditorModal: React.FC<PersonaEditorModalProps> = ({
   const [label, setLabel] = useState('');
   const [command, setCommand] = useState('');
   const [enabled, setEnabled] = useState(true);
-  const [model, setModel] = useState('gemini-2.5-flash');
+  const [model, setModel] = useState(DEFAULT_MODEL);
   const [description, setDescription] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
   const [capabilitiesStr, setCapabilitiesStr] = useState('');
@@ -35,7 +36,7 @@ export const PersonaEditorModal: React.FC<PersonaEditorModalProps> = ({
       setLabel(persona.label || '');
       setCommand(persona.command || '');
       setEnabled(persona.enabled !== false);
-      setModel(persona.model || 'gemini-2.5-flash');
+      setModel(persona.model || DEFAULT_MODEL);
       setDescription(persona.description || '');
       setSystemPrompt(persona.systemPrompt || '');
       setCapabilitiesStr(Array.isArray(persona.capabilities) ? persona.capabilities.join('\n') : '');
@@ -119,10 +120,17 @@ export const PersonaEditorModal: React.FC<PersonaEditorModalProps> = ({
                 onChange={(e) => setModel(e.target.value)}
                 className={input}
               >
-                <option value="gemini-2.5-flash">Gemini 2.5 Flash (Fast, Google)</option>
-                <option value="gemini-2.5-pro">Gemini 2.5 Pro (Analytical, Google)</option>
-                <option value="claude-3-5-sonnet">Claude 3.5 Sonnet (Coding, Anthropic)</option>
-                <option value="gpt-4o">GPT-4o (Reasoning, OpenAI)</option>
+                {/* Preserve a previously-saved value that is no longer in the list */}
+                {model && !MODEL_OPTIONS.some(m => m.value === model) && (
+                  <option value={model}>{model} (custom)</option>
+                )}
+                {MODEL_GROUPS.map(g => (
+                  <optgroup key={g.provider} label={g.provider}>
+                    {g.models.map(m => (
+                      <option key={m.value} value={m.value}>{m.label}</option>
+                    ))}
+                  </optgroup>
+                ))}
               </select>
             </div>
           </div>

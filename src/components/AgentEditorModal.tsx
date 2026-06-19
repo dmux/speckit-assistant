@@ -5,6 +5,7 @@ import { X, Save, Bot } from 'lucide-react';
 import { AgentType } from '../domain/models/types';
 import { AgentProfile } from '../domain/models/agents';
 import { McpServer } from '../domain/models/mcp';
+import { MODEL_OPTIONS } from '../domain/models/modelOptions';
 
 type AgentEditorModalProps = {
   isOpen: boolean;
@@ -102,7 +103,12 @@ export const AgentEditorModal: React.FC<AgentEditorModalProps> = ({ isOpen, onCl
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>Model (for cost pricing)</label>
-              <input className={input} value={model} onChange={e => setModel(e.target.value)} placeholder="e.g. claude-sonnet" />
+              <input className={input} value={model} onChange={e => setModel(e.target.value)} placeholder="e.g. claude-sonnet-4-6" list="model-options" />
+              <datalist id="model-options">
+                {MODEL_OPTIONS.map(m => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </datalist>
             </div>
             <div>
               <label className={labelCls}>Custom Binary Path (optional)</label>

@@ -25,7 +25,7 @@ export const DEFAULT_AGENTS: AgentsFile = {
       id: 'claude-default',
       name: 'Claude (Default)',
       agentType: 'claude',
-      model: 'claude-sonnet',
+      model: 'claude-sonnet-4-6',
       enabled: true,
       mcpServerIds: [],
       description: 'Default Anthropic Claude CLI agent.',

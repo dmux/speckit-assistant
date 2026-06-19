@@ -69,6 +69,8 @@ describe('CostMeter', () => {
 describe('pricing', () => {
   it('normalizes model strings to table keys by substring', () => {
     expect(normalizeModel('claude-3-5-sonnet-20241022')).toBe('claude-sonnet');
+    expect(normalizeModel('claude-sonnet-4-6')).toBe('claude-sonnet');
+    expect(normalizeModel('claude-haiku-4-5-20251001')).toBe('claude-haiku');
     expect(normalizeModel('claude-opus-4-8')).toBe('claude-opus');
     expect(normalizeModel('gemini-2.5-pro')).toBe('gemini-2.5-pro');
     expect(normalizeModel('gpt-4o-mini')).toBe('gpt-4o-mini');
