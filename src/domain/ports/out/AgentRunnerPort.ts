@@ -1,4 +1,5 @@
 import { WorkflowPhase, AgentConfig, PersonaConfig, PersonaId, CostMetadata } from '../../models/types';
+import { DevOpsAgent } from '../../models/devopsAgents';
 
 export interface AgentRunnerPort {
   runPhase(
@@ -16,6 +17,16 @@ export interface AgentRunnerPort {
     workspacePath: string,
     featureName: string,
     persona: PersonaConfig,
+    agentConfig: AgentConfig,
+    onData?: (text: string) => void,
+    onCost?: (cost: CostMetadata) => void
+  ): Promise<number>;
+  // Runs an on-demand DevOps agent (deploy/monitor/troubleshoot) as its own tracked
+  // CLI process. featureName may be null for a workspace-wide run.
+  runDevOps(
+    workspacePath: string,
+    featureName: string | null,
+    agent: DevOpsAgent,
     agentConfig: AgentConfig,
     onData?: (text: string) => void,
     onCost?: (cost: CostMetadata) => void

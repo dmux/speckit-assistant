@@ -1,6 +1,6 @@
 {
   "name": "speckit-assistant",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Visual orchestrator for Spec-Driven Development (SDD) — Next.js, ReactFlow and Hexagonal Architecture",
   "main": "dist/index.js",
   "bin": {
@@ -48,6 +48,7 @@
     "chokidar": "^5.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "d3-force": "^3.0.0",
     "js-yaml": "^4.2.0",
     "lucide-react": "^0.468.0",
     "next": "^15.1.0",
@@ -63,6 +64,7 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
+    "@types/d3-force": "^3.0.10",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.17.9",
     "@types/react": "^19.0.1",

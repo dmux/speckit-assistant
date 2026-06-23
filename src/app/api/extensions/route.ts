@@ -8,7 +8,7 @@ export async function GET() {
   try {
     const workspacePath = getWorkspacePath();
     const [available, installed] = await Promise.all([
-      specifyCli.isAvailable(),
+      specifyCli.isAvailable(workspacePath),
       extensionRepository.listInstalled(workspacePath),
     ]);
     return NextResponse.json({ available, installed, bundled: BUNDLED_EXTENSIONS });
@@ -22,6 +22,14 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { action } = body || {};
     if (!action) return NextResponse.json({ error: 'Missing action' }, { status: 400 });
+
+    // Install the `specify` CLI itself (separate from `specify extension ...`).
+    if (action === 'install-cli') {
+      const wsPath = getWorkspacePath();
+      const { code, output } = await specifyCli.installCli(wsPath);
+      const available = await specifyCli.isAvailable(wsPath);
+      return NextResponse.json({ success: code === 0, code, output, available });
+    }
 
     // Resolve a bundled extension's local directory into a --dev install.
     let input: SpecifyActionInput;

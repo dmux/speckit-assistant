@@ -48,7 +48,7 @@ export type PersonaState = {
 export type PersonaConfig = {
   id: PersonaId;
   label: string;    // "QA", "Code Review", "Security", "Tech Lead"
-  command: string;  // extension slash command, e.g. "/speckit.review.qa"
+  command: string;  // extension slash command, e.g. "/speckit.personas.qa"
   enabled: boolean;
   model?: string;
   systemPrompt?: string;

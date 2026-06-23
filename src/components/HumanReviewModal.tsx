@@ -11,6 +11,7 @@ import { PhaseState, PersonaState, CostMetadata } from '../domain/models/types';
 import dynamic from 'next/dynamic';
 import { FileTree, TreeNode } from './FileTree';
 import { MarkdownPreview } from './MarkdownPreview';
+import { fmtUSD, fmtTokens, fmtDuration } from '../lib/format';
 
 // Lazy-loaded so react-syntax-highlighter only ships when a code file is opened.
 const CodeViewer = dynamic(() => import('./CodeViewer').then((m) => m.CodeViewer), {
@@ -19,16 +20,6 @@ const CodeViewer = dynamic(() => import('./CodeViewer').then((m) => m.CodeViewer
 });
 
 const isMarkdownPath = (p: string) => /\.(md|markdown)$/i.test(p);
-
-// Cost/usage formatting helpers for the review portal.
-const fmtUSD = (usd: number) => `$${usd < 0.01 ? usd.toFixed(4) : usd.toFixed(2)}`;
-const fmtTokens = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`);
-const fmtDuration = (ms: number) => {
-  const s = Math.round(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  return `${m}m ${s % 60}s`;
-};
 
 type HumanReviewModalProps = {
   isOpen: boolean;

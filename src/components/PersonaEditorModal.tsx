@@ -143,7 +143,7 @@ export const PersonaEditorModal: React.FC<PersonaEditorModalProps> = ({
                 value={command}
                 onChange={(e) => setCommand(e.target.value)}
                 className={`${input} font-mono`}
-                placeholder="e.g. /speckit.review.qa"
+                placeholder="e.g. /speckit.personas.qa"
               />
             </div>
             <div className="flex items-center h-full pt-4">

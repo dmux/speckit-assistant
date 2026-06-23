@@ -14,16 +14,16 @@ requires:
 
 provides:
   commands:
-    - name: "speckit.review.qa"
+    - name: "speckit.personas.qa"
       file: "commands/qa.md"
       description: "QA persona: verifies the implementation against the spec and tasks."
-    - name: "speckit.review.code"
+    - name: "speckit.personas.code"
       file: "commands/code.md"
       description: "Code Review persona: reviews code quality, structure and maintainability."
-    - name: "speckit.review.security"
+    - name: "speckit.personas.security"
       file: "commands/security.md"
       description: "Security persona: audits the change for security issues."
-    - name: "speckit.review.techlead"
+    - name: "speckit.personas.techlead"
       file: "commands/techlead.md"
       description: "Tech Lead persona: aggregates the other reviews and signs off."
 

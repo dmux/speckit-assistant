@@ -1,0 +1,30 @@
+schema_version: "1.0"
+
+extension:
+  id: "devops"
+  name: "Spec Kit DevOps Agents"
+  version: "1.0.0"
+  description: "Operational sub-agents run on demand: Deploy, post-deploy Monitoring, and Troubleshooting."
+  author: "speckit-assistant"
+  repository: "https://github.com/dmux/speckit-assistant"
+  license: "MIT"
+
+requires:
+  speckit_version: ">=0.1.0"
+
+# Commands are invoked on demand from the speckit-assistant Executions view — they
+# are NOT wired as lifecycle hooks (no `hooks:` block). The command namespace must
+# equal the extension id (speckit.<id>.<command>).
+provides:
+  commands:
+    - name: "speckit.devops.deploy"
+      file: "commands/deploy.md"
+      description: "Deploy agent: ships the approved implementation and verifies the release."
+    - name: "speckit.devops.monitor"
+      file: "commands/monitor.md"
+      description: "Monitoring agent: inspects post-deploy health, metrics and logs."
+    - name: "speckit.devops.troubleshoot"
+      file: "commands/troubleshoot.md"
+      description: "Troubleshooting agent: diagnoses incidents and proposes remediation."
+
+tags: ["devops", "deploy", "monitoring", "troubleshooting", "operations"]

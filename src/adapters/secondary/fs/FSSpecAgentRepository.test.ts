@@ -24,12 +24,12 @@ describe('FSSpecAgentRepository', () => {
 
   it('round-trips the roster as YAML', async () => {
     const file: SpecAgentsFile = {
-      agents: [{ id: 'spec-po', label: 'PO', command: 'speckit.spec.po', enabled: true, optional: true, priority: 10, builtin: true }],
+      agents: [{ id: 'spec-po', label: 'PO', command: 'speckit.spec-agents.po', enabled: true, optional: true, priority: 10, builtin: true }],
     };
     await repo.saveAgents(ws, file);
     const raw = fs.readFileSync(path.join(ws, '.specify', 'spec-agents.yaml'), 'utf-8');
     expect(raw).toMatch(/agents:/);
-    expect((await repo.getAgents(ws)).agents[0].command).toBe('speckit.spec.po');
+    expect((await repo.getAgents(ws)).agents[0].command).toBe('speckit.spec-agents.po');
   });
 
   it('applies hooks into extensions.yml preserving other events/entries', async () => {
@@ -48,8 +48,8 @@ describe('FSSpecAgentRepository', () => {
 
     const file: SpecAgentsFile = {
       agents: [
-        { id: 'spec-po', label: 'PO', command: 'speckit.spec.po', enabled: true, optional: true, priority: 10, builtin: true },
-        { id: 'spec-arch', label: 'Arch', command: 'speckit.spec.architecture', enabled: false, optional: true, priority: 20, builtin: true },
+        { id: 'spec-po', label: 'PO', command: 'speckit.spec-agents.po', enabled: true, optional: true, priority: 10, builtin: true },
+        { id: 'spec-arch', label: 'Arch', command: 'speckit.spec-agents.architecture', enabled: false, optional: true, priority: 20, builtin: true },
       ],
     };
 
@@ -67,7 +67,7 @@ describe('FSSpecAgentRepository', () => {
 
   it('writes a command file for a custom agent with a prompt', async () => {
     const file: SpecAgentsFile = {
-      agents: [{ id: 'qa-spec', label: 'Spec QA', command: 'speckit.spec.qa-spec', systemPrompt: 'Check testability.', enabled: true, optional: true, priority: 40 }],
+      agents: [{ id: 'qa-spec', label: 'Spec QA', command: 'speckit.spec-agents.qa-spec', systemPrompt: 'Check testability.', enabled: true, optional: true, priority: 40 }],
     };
     const res = await repo.applyToSpecKit(ws, file);
     const cmd = path.join(ws, '.specify', 'spec-agents', 'commands', 'qa-spec.md');

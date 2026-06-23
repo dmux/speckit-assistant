@@ -4,7 +4,7 @@
 
 ---
 
-[![Version](https://img.shields.io/badge/Version-0.3.0-blue.svg)](https://github.com/dmux/speckit-assistant)
+[![Version](https://img.shields.io/badge/Version-0.4.0-blue.svg)](https://github.com/dmux/speckit-assistant)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Coverage Status](https://img.shields.io/badge/Coverage-99.44%25-brightgreen.svg)](https://github.com/dmux/speckit-assistant)
 [![Node Version](https://img.shields.io/badge/Node-%3E%3D%2018.0.0-blue.svg)](https://nodejs.org)
@@ -59,8 +59,12 @@ SpecKit Assistant acts as the **Visual Dashboard** and **Command-Line Interface*
 ## ✨ Key Features
 
 * 🎨 **Premium UI/UX**: High-fidelity dark and light themes (light by default) styled with a sleek, minimalist Vercel aesthetic.
-* 🧭 **Full-Width Sectioned Layout**: Top-level sections separate responsibilities — **Workflow**, **Agents**, and **MCP Tools** — each using the full width of the screen.
+* 🧭 **Full-Width Sectioned Layout**: Top-level sections separate responsibilities — **Workflow**, **Agents**, **MCP Tools**, and **Extensions** — each using the full width of the screen.
 * 🗺️ **Interactive ReactFlow DAG Map**: Visualizes the dependencies and status of every feature's development lifecycle.
+* 📡 **Agent Executions View**: A third Workflow view (next to Kanban / DAG) that tracks **every** agent run — phases, review personas, and DevOps agents — with live status, start time, duration, cost, tokens, and exit code, drillable to each run's saved log. Includes an **Obsidian-style force-directed graph** (agent/feature nodes, edges weighted by run frequency) that can be maximized full-screen. Backed by an append-only execution history that survives reloads.
+* 🚀 **DevOps Agents (on-demand)**: A profile of operational agents — **Deploy**, post-deploy **Monitor**, and **Troubleshoot** — run on demand from the Executions view, backed by the bundled `spec-kit-devops` extension.
+* 🧩 **Extension Manager**: Install and manage spec-kit extensions from the UI — one-click bundled installs (Review Personas, Specification Agents, DevOps Agents), community installs via GitHub ZIP/URL, and a one-click **`specify` CLI installer** (venv-first, from the spec-kit GitHub source — no `git` required).
+* 🧑‍⚖️ **Specification & Review Agents**: Spec-phase agents (Product Owner, Architecture, Refinement, Consolidate) wired as `after_specify` hooks, plus a sequential implementation **review gate** (QA, Code Review, Security, Tech Lead).
 * 📋 **Drag-and-Drop Kanban Board**: Progress features forward (auto-approving intermediate steps and launching agents) or roll them back (marking downstream files as stale) by simple drag-and-drop.
 * 🤖 **Agent Management (YAML)**: Create, edit, and persist multiple CLI agent profiles centrally in `.specify/agents.yaml`; the active agent drives every workflow run. Supports Anthropic's **Claude CLI**, Google's **Gemini CLI**, **GitHub Copilot CLI**, **OpenAI Codex**, or custom CLI wrappers.
 * 🔌 **Agnostic MCP Tools**: Define **Model Context Protocol** servers once, assign them per agent, and apply them to each CLI's *native* config — Claude `.mcp.json`, Gemini `~/.gemini/settings.json`, Codex `~/.codex/config.toml` — with safe read-merge-write (and `.bak` backups).
@@ -245,15 +249,21 @@ my-project/
 │   ├── agents.yaml             # Persisted CLI agent profiles + active agent
 │   ├── mcp.yaml                # Central MCP server definitions
 │   ├── personas-config.json    # Review-gate persona configuration
+│   ├── spec-agents.yaml        # Specification-phase agent roster
+│   ├── devops-agents.yaml      # DevOps agent roster (deploy/monitor/troubleshoot)
+│   ├── extensions/             # Installed spec-kit extensions (.registry + each extension)
 │   └── .runtime/
-│       └── workflow-state.json # Internal workflow cache (automatically managed)
+│       ├── workflow-state.json # Internal workflow cache (automatically managed)
+│       ├── executions.jsonl    # Append-only agent execution history
+│       └── logs/               # Captured per-run output logs
 └── specs/
     └── 001-user-authentication/
         ├── spec.md             # Feature requirements
         ├── plan.md             # Implementation strategy
         ├── checklist.md        # — or a checklists/ directory of multiple .md files
         ├── tasks.md            # Actionable checklists
-        └── reviews/            # Persona review reports (qa.md, security.md, ...)
+        ├── reviews/            # Persona review reports (qa.md, security.md, ...)
+        └── devops/             # DevOps agent reports (deploy.md, monitor.md, ...)
 ```
 
 ---

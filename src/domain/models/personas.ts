@@ -11,7 +11,7 @@ export const DEFAULT_PERSONAS: PersonaConfig[] = [
   {
     id: 'qa',
     label: 'QA',
-    command: '/speckit.review.qa',
+    command: '/speckit.personas.qa',
     enabled: true,
     model: 'gemini-2.5-flash',
     description: 'Automated quality assurance agent. Runs tests, verifies regression suite, and inspects validation logs.',
@@ -22,7 +22,7 @@ export const DEFAULT_PERSONAS: PersonaConfig[] = [
   {
     id: 'code-review',
     label: 'Code Review',
-    command: '/speckit.review.code',
+    command: '/speckit.personas.code',
     enabled: true,
     model: 'gemini-2.5-pro',
     description: 'Automated code standard and architectural reviewer. Validates SOLID patterns and code complexity.',
@@ -33,7 +33,7 @@ export const DEFAULT_PERSONAS: PersonaConfig[] = [
   {
     id: 'security',
     label: 'Security',
-    command: '/speckit.review.security',
+    command: '/speckit.personas.security',
     enabled: true,
     model: 'claude-3-5-sonnet',
     description: 'Automated security compliance agent. Scans for hardcoded credentials, dependency CVEs, and OWASP vulnerabilities.',
@@ -44,7 +44,7 @@ export const DEFAULT_PERSONAS: PersonaConfig[] = [
   {
     id: 'tech-lead',
     label: 'Tech Lead',
-    command: '/speckit.review.techlead',
+    command: '/speckit.personas.techlead',
     enabled: true,
     model: 'gemini-2.5-pro',
     description: 'Tech Lead agent responsible for final signature sign-off. Aggregates reviews and signs the implementation gate.',
