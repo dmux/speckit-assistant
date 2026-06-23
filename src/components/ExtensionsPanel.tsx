@@ -5,6 +5,7 @@ import { Package, Download, Trash2, Power, AlertTriangle, Terminal } from 'lucid
 import { InstalledExtension, BundledExtension } from '../domain/models/extensions';
 
 export type ExtensionAction =
+  | { action: 'install-cli' }
   | { action: 'install-bundled'; id: string }
   | { action: 'install-community'; id: string; fromUrl?: string; priority?: number }
   | { action: 'remove'; id: string }
@@ -59,8 +60,15 @@ export const ExtensionsPanel: React.FC<ExtensionsPanelProps> = ({ available, ins
           <AlertTriangle size={14} className="shrink-0 mt-0.5" />
           <div>
             <p className="font-semibold">The <span className="font-mono">specify</span> CLI was not found.</p>
-            <p className="mt-1">Install it to manage extensions:</p>
-            <pre className="mt-1 font-mono text-[11px] whitespace-pre-wrap">uv tool install specify-cli --from git+https://github.com/github/spec-kit.git</pre>
+            <p className="mt-1">Installs from the spec-kit GitHub source (no git needed) into the project's local <span className="font-mono">.venv</span> if present, otherwise globally. Requires <span className="font-mono">uv</span>:</p>
+            <pre className="mt-1 font-mono text-[11px] whitespace-pre-wrap">uv pip install &quot;specify-cli @ https://github.com/github/spec-kit/archive/refs/heads/main.zip&quot;</pre>
+            <button
+              onClick={() => run('install-cli', { action: 'install-cli' })}
+              disabled={busy === 'install-cli'}
+              className="mt-2 flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white rounded-lg text-[11px] font-semibold hover:opacity-90 transition disabled:opacity-50"
+            >
+              <Download size={13} /> {busy === 'install-cli' ? 'Installing CLI…' : 'Install specify CLI'}
+            </button>
           </div>
         </div>
       )}

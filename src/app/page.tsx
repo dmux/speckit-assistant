@@ -284,9 +284,13 @@ export default function Dashboard() {
       body: JSON.stringify(a),
     });
     const data = await res.json();
-    if (Array.isArray(data.installed)) {
-      setExtState(prev => ({ ...prev, installed: data.installed }));
-    }
+    setExtState(prev => ({
+      ...prev,
+      ...(Array.isArray(data.installed) ? { installed: data.installed } : {}),
+      ...(typeof data.available === 'boolean' ? { available: data.available } : {}),
+    }));
+    // The CLI just became available — refresh installed extensions too.
+    if (a.action === 'install-cli' && data.available) fetchExtensions();
     return data;
   };
 
