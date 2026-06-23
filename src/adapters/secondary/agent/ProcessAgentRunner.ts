@@ -6,6 +6,7 @@ import {
   PersonaId,
   CostMetadata,
 } from "../../../domain/models/types";
+import { DevOpsAgent } from "../../../domain/models/devopsAgents";
 import type * as pty from "node-pty";
 import { loadPty } from "../pty/ptyLoader";
 import { meter } from "../../../domain/services/CostMeter";
@@ -33,6 +34,10 @@ export class ProcessAgentRunner implements AgentRunnerPort {
 
   private personaKey(featureName: string, id: PersonaId): string {
     return `${featureName}-impl-persona-${id}`;
+  }
+
+  private devopsKey(featureName: string | null, id: string): string {
+    return `${featureName || "global"}-devops-${id}`;
   }
 
   async writeStdin(
@@ -149,6 +154,31 @@ export class ProcessAgentRunner implements AgentRunnerPort {
     });
   }
 
+  async runDevOps(
+    workspacePath: string,
+    featureName: string | null,
+    agent: DevOpsAgent,
+    agentConfig: AgentConfig,
+    onData?: (text: string) => void,
+    onCost?: (cost: CostMetadata) => void,
+  ): Promise<number> {
+    // DevOps agents target a feature's artifacts when one is active, else run
+    // workspace-wide. The leading slash mirrors how phases/personas invoke commands.
+    const slash = agent.command.startsWith("/") ? agent.command : `/${agent.command}`;
+    const fullPrompt = featureName ? `${slash} specs/${featureName}` : slash;
+
+    return this.spawnAgent({
+      workspacePath,
+      procKey: this.devopsKey(featureName, agent.id),
+      doneTag: `devops:${agent.id}`,
+      agentConfig,
+      fullPrompt,
+      onData,
+      onCost,
+      devops: agent,
+    });
+  }
+
   // Shared spawn path for both phase and persona runs: spawns the agent CLI
   // under a PTY (so interactive CLIs detect a TTY), streams output, and resolves
   // with the exit code.
@@ -161,6 +191,7 @@ export class ProcessAgentRunner implements AgentRunnerPort {
     onData?: (text: string) => void;
     onCost?: (cost: CostMetadata) => void;
     persona?: PersonaConfig;
+    devops?: DevOpsAgent;
   }): Promise<number> {
     const { workspacePath, procKey, doneTag, agentConfig, fullPrompt, onData, onCost } =
       opts;
@@ -217,6 +248,15 @@ export class ProcessAgentRunner implements AgentRunnerPort {
                   : "",
               }
             : {}),
+          ...(opts.devops
+            ? {
+                SPECKIT_DEVOPS_ID: opts.devops.id || "",
+                SPECKIT_DEVOPS_LABEL: opts.devops.label || "",
+                SPECKIT_DEVOPS_CATEGORY: opts.devops.category || "",
+                SPECKIT_DEVOPS_MODEL: opts.devops.model || "",
+                SPECKIT_DEVOPS_SYSTEM_PROMPT: opts.devops.systemPrompt || "",
+              }
+            : {}),
         } as { [key: string]: string },
       });
 
@@ -244,7 +284,7 @@ export class ProcessAgentRunner implements AgentRunnerPort {
         try {
           const cost = meter({
             agentType: agentConfig.agentType,
-            model: opts.persona?.model ?? agentConfig.model,
+            model: opts.persona?.model ?? opts.devops?.model ?? agentConfig.model,
             promptText: fullPrompt,
             outputText: fullOutput,
             durationMs: Date.now() - startTime,

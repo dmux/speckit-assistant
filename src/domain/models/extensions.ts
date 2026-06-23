@@ -33,4 +33,10 @@ export const BUNDLED_EXTENSIONS: BundledExtension[] = [
     description: 'Specification-phase agents: Product Owner, Architecture, Technical Refinement, Consolidate.',
     dir: 'spec-kit-spec-agents',
   },
+  {
+    id: 'devops',
+    label: 'DevOps Agents',
+    description: 'On-demand operational agents: Deploy, post-deploy Monitoring, Troubleshooting.',
+    dir: 'spec-kit-devops',
+  },
 ];

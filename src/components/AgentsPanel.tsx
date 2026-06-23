@@ -1,24 +1,28 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Bot, Plus, Pencil, Trash2, CheckCircle2, Circle, UploadCloud, Shield, Users, ArrowUp, ArrowDown } from 'lucide-react';
+import { Bot, Plus, Pencil, Trash2, CheckCircle2, Circle, UploadCloud, Shield, Users, ArrowUp, ArrowDown, Rocket } from 'lucide-react';
 import { AgentsFile, AgentProfile } from '../domain/models/agents';
 import { McpServer } from '../domain/models/mcp';
 import { PersonaConfig } from '../domain/models/types';
 import { SpecAgentsFile, SpecAgent } from '../domain/models/specAgents';
+import { DevOpsAgentsFile, DevOpsAgent } from '../domain/models/devopsAgents';
 import type { McpApplyResult } from '../domain/ports/out/McpConfigPort';
 import type { SpecAgentApplyResult } from '../domain/ports/out/SpecAgentRepositoryPort';
 import { AgentEditorModal } from './AgentEditorModal';
 import { SpecAgentEditorModal } from './SpecAgentEditorModal';
+import { DevOpsAgentEditorModal } from './DevOpsAgentEditorModal';
 
 type AgentsPanelProps = {
   agentsFile: AgentsFile;
   mcpServers: McpServer[];
   personaConfigs: PersonaConfig[];
   specAgentsFile: SpecAgentsFile;
+  devopsAgentsFile: DevOpsAgentsFile;
   onSaveAgents: (file: AgentsFile) => void;
   onSavePersonas: (next: PersonaConfig[]) => void;
   onSaveSpecAgents: (file: SpecAgentsFile) => void;
+  onSaveDevOpsAgents: (file: DevOpsAgentsFile) => void;
   onEditPersona: (p: PersonaConfig) => void;
   onApply: (agentId: string) => Promise<McpApplyResult & { error?: string }>;
   onApplySpecAgents: () => Promise<SpecAgentApplyResult & { error?: string }>;
@@ -29,9 +33,11 @@ export const AgentsPanel: React.FC<AgentsPanelProps> = ({
   mcpServers,
   personaConfigs,
   specAgentsFile,
+  devopsAgentsFile,
   onSaveAgents,
   onSavePersonas,
   onSaveSpecAgents,
+  onSaveDevOpsAgents,
   onEditPersona,
   onApply,
   onApplySpecAgents,
@@ -84,6 +90,16 @@ export const AgentsPanel: React.FC<AgentsPanelProps> = ({
       setSpecApplying(false);
     }
   };
+
+  // DevOps agents state
+  const [editingDevops, setEditingDevops] = useState<DevOpsAgent | null>(null);
+  const devopsAgents = devopsAgentsFile.agents;
+  const upsertDevops = (a: DevOpsAgent) => {
+    onSaveDevOpsAgents({ agents: devopsAgents.map(x => (x.id === a.id ? a : x)) });
+    setEditingDevops(null);
+  };
+  const toggleDevops = (id: string, patch: Partial<DevOpsAgent>) =>
+    onSaveDevOpsAgents({ agents: devopsAgents.map(a => (a.id === id ? { ...a, ...patch } : a)) });
 
   const agents = agentsFile.agents;
 
@@ -317,6 +333,36 @@ export const AgentsPanel: React.FC<AgentsPanelProps> = ({
         </div>
       </div>
 
+      {/* DevOps agents */}
+      <div className="mt-10">
+        <h2 className="text-lg font-bold text-zinc-900 dark:text-white flex items-center gap-2">
+          <Rocket size={18} /> DevOps Agents
+        </h2>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 mb-3">
+          Operational agents run on demand from the <span className="font-semibold">Executions</span> view (Deploy, Monitor,
+          Troubleshoot). Requires the <span className="font-mono">DevOps Agents</span> extension installed.
+        </p>
+
+        <div className="space-y-2">
+          {devopsAgents.map(a => (
+            <div key={a.id} className="flex items-center gap-3 p-3 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg">
+              <input type="checkbox" checked={a.enabled} onChange={e => toggleDevops(a.id, { enabled: e.target.checked })} className="w-4 h-4 rounded border-zinc-300 dark:border-zinc-700 text-blue-500 focus:ring-0" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-zinc-900 dark:text-white truncate">{a.label}</span>
+                  <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-zinc-100 dark:bg-zinc-900 text-zinc-500 uppercase">{a.category}</span>
+                  <span className="text-[9px] font-mono text-zinc-500">{a.command}</span>
+                </div>
+                {a.description && <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">{a.description}</p>}
+              </div>
+              <span className="text-[9px] font-mono text-zinc-500 shrink-0">{a.model || 'default model'}</span>
+              <button onClick={() => setEditingDevops(a)} className="p-1.5 rounded text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition" title="Edit"><Pencil size={13} /></button>
+            </div>
+          ))}
+          {devopsAgents.length === 0 && <p className="text-xs text-zinc-500 italic">No DevOps agents.</p>}
+        </div>
+      </div>
+
       <AgentEditorModal
         isOpen={creating || editing !== null}
         onClose={() => { setEditing(null); setCreating(false); }}
@@ -330,6 +376,13 @@ export const AgentsPanel: React.FC<AgentsPanelProps> = ({
         onClose={() => { setEditingSpec(null); setCreatingSpec(false); }}
         agent={editingSpec}
         onSave={upsertSpec}
+      />
+
+      <DevOpsAgentEditorModal
+        isOpen={editingDevops !== null}
+        onClose={() => setEditingDevops(null)}
+        agent={editingDevops}
+        onSave={upsertDevops}
       />
     </div>
   );

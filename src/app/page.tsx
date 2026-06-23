@@ -28,9 +28,12 @@ import AgentsPanel from '@/components/AgentsPanel';
 import McpPanel from '@/components/McpPanel';
 import ExtensionsPanel, { type ExtensionAction } from '@/components/ExtensionsPanel';
 import AboutModal, { APP_VERSION } from '@/components/AboutModal';
+import ExecutionsView from '@/components/ExecutionsView';
 import { AgentsFile, DEFAULT_AGENTS, toAgentConfig, activeAgent } from '@/domain/models/agents';
 import { McpFile, DEFAULT_MCP } from '@/domain/models/mcp';
 import { SpecAgentsFile, DEFAULT_SPEC_AGENTS } from '@/domain/models/specAgents';
+import { DevOpsAgentsFile, DEFAULT_DEVOPS_AGENTS } from '@/domain/models/devopsAgents';
+import { ExecutionRecord } from '@/domain/models/executions';
 import { InstalledExtension, BundledExtension } from '@/domain/models/extensions';
 import {
   Sun,
@@ -51,7 +54,8 @@ import {
   ShieldCheck,
   Bot,
   Plug,
-  Package
+  Package,
+  Activity
 } from 'lucide-react';
 
 const PHASE_LABELS: Record<WorkflowPhase, string> = {
@@ -71,7 +75,7 @@ export default function Dashboard() {
   const agentConsoleRef = React.useRef<AgentConsoleHandle | null>(null);
   const [selectedFile, setSelectedFile] = useState<{ path: string; content: string } | null>(null);
   
-  const [viewMode, setViewMode] = useState<'kanban' | 'dag'>('kanban');
+  const [viewMode, setViewMode] = useState<'kanban' | 'dag' | 'executions'>('kanban');
   const [section, setSection] = useState<'workflow' | 'agents' | 'mcp' | 'extensions'>('workflow');
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [agentConfig, setAgentConfig] = useState<AgentConfig>({
@@ -82,6 +86,9 @@ export default function Dashboard() {
   const [agentsFile, setAgentsFile] = useState<AgentsFile>(DEFAULT_AGENTS);
   const [mcpFile, setMcpFile] = useState<McpFile>(DEFAULT_MCP);
   const [specAgentsFile, setSpecAgentsFile] = useState<SpecAgentsFile>(DEFAULT_SPEC_AGENTS);
+  const [devopsAgentsFile, setDevopsAgentsFile] = useState<DevOpsAgentsFile>(DEFAULT_DEVOPS_AGENTS);
+  const [executions, setExecutions] = useState<ExecutionRecord[]>([]);
+  const [runningDevOps, setRunningDevOps] = useState<string | null>(null);
   const [extState, setExtState] = useState<{ available: boolean; installed: InstalledExtension[]; bundled: BundledExtension[] }>({ available: false, installed: [], bundled: [] });
   const [prompt, setPrompt] = useState<string>('');
   const [personaConfigs, setPersonaConfigs] = useState<PersonaConfig[]>(DEFAULT_PERSONAS);
@@ -127,6 +134,8 @@ export default function Dashboard() {
     fetchAgents();
     fetchMcp();
     fetchSpecAgents();
+    fetchDevOpsAgents();
+    fetchExecutions();
     fetchExtensions();
 
     // Default to light mode
@@ -141,6 +150,11 @@ export default function Dashboard() {
       const changedFile = payload.changedFile || null;
 
       setState(newState);
+
+      // The executions feed is watched too; refresh it whenever the workspace changes.
+      if (!changedFile || changedFile.includes('executions.jsonl') || changedFile.includes('workflow-state.json')) {
+        fetchExecutions();
+      }
 
       if (selectedFileRef.current && changedFile) {
         const currentPath = selectedFileRef.current.path.replace(/\\/g, '/');
@@ -266,6 +280,90 @@ export default function Dashboard() {
       body: JSON.stringify(specAgentsFile),
     });
     return res.json();
+  };
+
+  const fetchDevOpsAgents = async () => {
+    try {
+      const res = await fetch('/api/devops-agents');
+      if (res.ok) setDevopsAgentsFile(await res.json());
+    } catch (err) {
+      console.error('Failed to fetch devops agents:', err);
+    }
+  };
+
+  const handleSaveDevOpsAgents = async (file: DevOpsAgentsFile) => {
+    setDevopsAgentsFile(file);
+    try {
+      await fetch('/api/devops-agents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(file),
+      });
+    } catch (err) {
+      console.error('Failed to save devops agents:', err);
+    }
+  };
+
+  const fetchExecutions = async () => {
+    try {
+      const res = await fetch('/api/executions');
+      if (res.ok) setExecutions((await res.json()).executions || []);
+    } catch (err) {
+      console.error('Failed to fetch executions:', err);
+    }
+  };
+
+  const handleRunDevOps = async (agentId: string) => {
+    const agent = devopsAgentsFile.agents.find(a => a.id === agentId);
+    agentConsoleRef.current?.clear();
+    agentConsoleRef.current?.write(`\x1b[36m=== DevOps: ${agent?.label || agentId} ===\x1b[0m\r\n`);
+    setRunningDevOps(agentId);
+    setActiveTab('console');
+    try {
+      const response = await fetch('/api/devops/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId, featureName: state?.activeFeatureName || null, agentConfig }),
+      });
+      // Non-SSE error responses (e.g. extension not installed) come back as JSON.
+      if (!response.ok || !response.body) {
+        const err = await response.json().catch(() => ({ error: 'Run failed' }));
+        agentConsoleRef.current?.write(`\r\n\x1b[31mError: ${err.error}\x1b[0m\r\n`);
+        return;
+      }
+      await consumeDevOpsStream(response);
+    } catch (err: any) {
+      agentConsoleRef.current?.write(`\r\n\x1b[31mExecution failed: ${err.message}\x1b[0m\r\n`);
+    } finally {
+      setRunningDevOps(null);
+      fetchExecutions();
+    }
+  };
+
+  const consumeDevOpsStream = async (response: Response) => {
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value);
+      const lines = buffer.split('\n\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        const dataLine = line.split('\n').find(l => l.startsWith('data: '));
+        if (!dataLine) continue;
+        const data = JSON.parse(dataLine.substring(6));
+        if (line.startsWith('event: log')) {
+          agentConsoleRef.current?.write(data.text);
+        } else if (line.startsWith('event: done')) {
+          agentConsoleRef.current?.write(`\r\n\x1b[32mDevOps run finished (exit ${data.exitCode}).\x1b[0m\r\n`);
+        } else if (line.startsWith('event: error')) {
+          agentConsoleRef.current?.write(`\r\n\x1b[31mError: ${data.message}\x1b[0m\r\n`);
+        }
+      }
+    }
+    fetchExecutions();
   };
 
   const fetchExtensions = async () => {
@@ -830,6 +928,13 @@ export default function Dashboard() {
                   <GitFork size={13} />
                   <span>DAG Map</span>
                 </button>
+                <button
+                  onClick={() => setViewMode('executions')}
+                  className={`p-1.5 rounded-md transition text-xs flex items-center gap-1.5 ${viewMode === 'executions' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-50 shadow-sm' : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'}`}
+                >
+                  <Activity size={13} />
+                  <span>Executions</span>
+                </button>
               </div>
 
               {/* Review Portal / Audit Trigger */}
@@ -876,9 +981,11 @@ export default function Dashboard() {
             mcpServers={mcpFile.servers}
             personaConfigs={personaConfigs}
             specAgentsFile={specAgentsFile}
+            devopsAgentsFile={devopsAgentsFile}
             onSaveAgents={handleSaveAgents}
             onSavePersonas={handleSavePersonasList}
             onSaveSpecAgents={handleSaveSpecAgents}
+            onSaveDevOpsAgents={handleSaveDevOpsAgents}
             onEditPersona={setEditingPersona}
             onApply={handleApplyMcp}
             onApplySpecAgents={handleApplySpecAgents}
@@ -1063,11 +1170,20 @@ export default function Dashboard() {
                       onOpenReview={(name, phaseState) => setAuditingFeature({ name, phaseState })}
                       onStopPhase={handleStopPhase}
                     />
-                  ) : (
+                  ) : viewMode === 'dag' ? (
                     <DagMap
                       state={state}
                       onSelectFeature={handleSelectFeature}
                       onSelectPhaseFile={handleLoadFile}
+                    />
+                  ) : (
+                    <ExecutionsView
+                      state={state}
+                      executions={executions}
+                      devopsAgents={devopsAgentsFile.agents}
+                      runningDevOps={runningDevOps}
+                      onRunDevOps={handleRunDevOps}
+                      theme={theme}
                     />
                   )
                 ) : (

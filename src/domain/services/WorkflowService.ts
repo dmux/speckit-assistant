@@ -1,6 +1,7 @@
 import { WorkflowUseCases } from '../ports/in/WorkflowUseCases';
 import { WorkspaceRepositoryPort } from '../ports/out/WorkspaceRepositoryPort';
 import { AgentRunnerPort } from '../ports/out/AgentRunnerPort';
+import { ExecutionHistoryPort } from '../ports/out/ExecutionHistoryPort';
 import {
   WorkflowState,
   WorkflowPhase,
@@ -12,6 +13,8 @@ import {
   PersonaRunStatus,
   CostMetadata,
 } from '../models/types';
+import { ExecutionStartInput, ExecutionStatus } from '../models/executions';
+import { DevOpsAgent } from '../models/devopsAgents';
 import { orderPersonas, personaReportPath } from '../models/personas';
 
 const FEATURE_PHASES: WorkflowPhase[] = [
@@ -28,8 +31,39 @@ const FEATURE_PHASES: WorkflowPhase[] = [
 export class WorkflowService implements WorkflowUseCases {
   constructor(
     private workspaceRepo: WorkspaceRepositoryPort,
-    private agentRunner: AgentRunnerPort
+    private agentRunner: AgentRunnerPort,
+    private executionHistory: ExecutionHistoryPort
   ) {}
+
+  // Wraps an agent run with execution-history tracking: records a 'running' entry,
+  // tees the run's output to its log file, then persists the terminal status/exit/cost.
+  // Returns the exit code, captured cost, and resolved status.
+  private async recordRun(
+    workspacePath: string,
+    meta: ExecutionStartInput,
+    onData: ((text: string) => void) | undefined,
+    run: (onData: (text: string) => void, onCost: (cost: CostMetadata) => void) => Promise<number>,
+    resolveStatus?: (exitCode: number) => Promise<ExecutionStatus> | ExecutionStatus
+  ): Promise<{ exitCode: number; cost?: CostMetadata; status: ExecutionStatus }> {
+    const record = await this.executionHistory.start(workspacePath, meta);
+    const tee = (text: string) => {
+      this.executionHistory.appendLog(workspacePath, record.id, text);
+      onData?.(text);
+    };
+    let cost: CostMetadata | undefined;
+    let exitCode = 1;
+    try {
+      exitCode = await run(tee, (c) => { cost = c; });
+      const status: ExecutionStatus = resolveStatus
+        ? await resolveStatus(exitCode)
+        : exitCode === 0 ? 'passed' : 'failed';
+      await this.executionHistory.finish(workspacePath, record.id, { status, exitCode, cost });
+      return { exitCode, cost, status };
+    } catch (err) {
+      await this.executionHistory.finish(workspacePath, record.id, { status: 'failed', exitCode, cost });
+      throw err;
+    }
+  }
 
   async getWorkflowState(workspacePath: string): Promise<WorkflowState> {
     const state = await this.workspaceRepo.getWorkflowState(workspacePath);
@@ -74,15 +108,11 @@ export class WorkflowService implements WorkflowUseCases {
     await this.workspaceRepo.saveWorkflowState(workspacePath, state);
 
     try {
-      let runCost: CostMetadata | undefined;
-      const exitCode = await this.agentRunner.runPhase(
+      const { exitCode, cost: runCost } = await this.recordRun(
         workspacePath,
-        phase,
-        targetFeature,
-        agentConfig,
-        userPrompt,
+        { kind: 'phase', feature: targetFeature, phase, label: phase },
         onData,
-        (c) => { runCost = c; }
+        (d, c) => this.agentRunner.runPhase(workspacePath, phase, targetFeature, agentConfig, userPrompt, d, c)
       );
 
       // Re-read state in case files changed on disk during run
@@ -153,17 +183,15 @@ export class WorkflowService implements WorkflowUseCases {
 
       onData?.(`\r\n\x1b[36m=== Persona: ${persona.label} (${persona.command}) ===\x1b[0m\r\n`);
 
-      let personaCost: CostMetadata | undefined;
-      const exitCode = await this.agentRunner.runPersona(
+      const { cost: personaCost, status } = await this.recordRun(
         workspacePath,
-        featureName,
-        persona,
-        agentConfig,
+        { kind: 'persona', feature: featureName, phase: 'implementation', agentId: persona.id, label: persona.label, command: persona.command },
         onData,
-        (c) => { personaCost = c; }
+        (d, c) => this.agentRunner.runPersona(workspacePath, featureName, persona, agentConfig, d, c),
+        async (exit) => (await this.resolvePersonaVerdict(workspacePath, featureName, persona.id, exit)) as ExecutionStatus
       );
 
-      const verdict = await this.resolvePersonaVerdict(workspacePath, featureName, persona.id, exitCode);
+      const verdict = status as PersonaRunStatus;
       ps.status = verdict;
       if (personaCost) ps.cost = personaCost;
       await this.workspaceRepo.saveWorkflowState(workspacePath, state);
@@ -179,6 +207,25 @@ export class WorkflowService implements WorkflowUseCases {
     await this.workspaceRepo.saveWorkflowState(workspacePath, state);
     onData?.(`\r\n\x1b[32m✓ Review gate completo — pronto para aprovação.\x1b[0m\r\n`);
     return state;
+  }
+
+  // Runs an on-demand DevOps agent (deploy/monitor/troubleshoot). It does not change
+  // workflow/phase state — it's an operational action, fully tracked in the execution
+  // history. featureName may be null for a workspace-wide run.
+  async runDevOps(
+    workspacePath: string,
+    agent: DevOpsAgent,
+    featureName: string | null,
+    agentConfig: AgentConfig,
+    onData?: (text: string) => void
+  ): Promise<{ exitCode: number }> {
+    const { exitCode } = await this.recordRun(
+      workspacePath,
+      { kind: 'devops', feature: featureName, agentId: agent.id, label: agent.label, command: agent.command },
+      onData,
+      (d, c) => this.agentRunner.runDevOps(workspacePath, featureName, agent, agentConfig, d, c)
+    );
+    return { exitCode };
   }
 
   // A persona's verdict is read from its report (specs/<feature>/reviews/<id>.md):

@@ -12,6 +12,7 @@
 /bin/app/
 /bin/bin/
 /bin/domain/
+/bin/lib/
 /bin/cli.js
 
 # Testing and Coverage

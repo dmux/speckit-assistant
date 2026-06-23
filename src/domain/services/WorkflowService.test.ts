@@ -2,12 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { WorkflowService } from './WorkflowService';
 import { WorkspaceRepositoryPort } from '../ports/out/WorkspaceRepositoryPort';
 import { AgentRunnerPort } from '../ports/out/AgentRunnerPort';
+import { ExecutionHistoryPort } from '../ports/out/ExecutionHistoryPort';
 import { WorkflowState, FeatureWorkflow } from '../models/types';
 import { DEFAULT_PERSONAS } from '../models/personas';
 
 describe('WorkflowService', () => {
   let workspaceRepo: vi.Mocked<WorkspaceRepositoryPort>;
   let agentRunner: vi.Mocked<AgentRunnerPort>;
+  let executionHistory: vi.Mocked<ExecutionHistoryPort>;
   let service: WorkflowService;
 
   const mockState: WorkflowState = {
@@ -42,7 +44,15 @@ describe('WorkflowService', () => {
       stop: vi.fn()
     } as any;
 
-    service = new WorkflowService(workspaceRepo, agentRunner);
+    executionHistory = {
+      start: vi.fn().mockImplementation(async (_ws, input) => ({ id: 'exec-1', logPath: '', startedAt: Date.now(), status: 'running', ...input })),
+      appendLog: vi.fn(),
+      finish: vi.fn().mockResolvedValue(undefined),
+      list: vi.fn().mockResolvedValue([]),
+      readLog: vi.fn().mockResolvedValue('')
+    } as any;
+
+    service = new WorkflowService(workspaceRepo, agentRunner, executionHistory);
   });
 
   it('should fetch workflow state', async () => {

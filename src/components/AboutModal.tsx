@@ -4,7 +4,7 @@ import React from 'react';
 import { X, Globe, Github } from 'lucide-react';
 
 // Keep in sync with package.json "version".
-export const APP_VERSION = '0.3.0';
+export const APP_VERSION = '0.4.0';
 export const CREATOR = {
   name: 'Rafael Sales',
   website: 'https://rfsales.dev',
