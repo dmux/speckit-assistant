@@ -8,10 +8,10 @@ QA → Code Review → Security → **Tech Lead** (final sign-off) — each as i
 
 | Command | Persona | Report written to |
 | --- | --- | --- |
-| `/speckit.review.qa` | QA Engineer | `specs/<feature>/reviews/qa.md` |
-| `/speckit.review.code` | Senior Code Reviewer | `specs/<feature>/reviews/code-review.md` |
-| `/speckit.review.security` | Security Engineer | `specs/<feature>/reviews/security.md` |
-| `/speckit.review.techlead` | Tech Lead | `specs/<feature>/reviews/tech-lead.md` |
+| `/speckit.personas.qa` | QA Engineer | `specs/<feature>/reviews/qa.md` |
+| `/speckit.personas.code` | Senior Code Reviewer | `specs/<feature>/reviews/code-review.md` |
+| `/speckit.personas.security` | Security Engineer | `specs/<feature>/reviews/security.md` |
+| `/speckit.personas.techlead` | Tech Lead | `specs/<feature>/reviews/tech-lead.md` |
 
 ## The `VERDICT:` contract
 

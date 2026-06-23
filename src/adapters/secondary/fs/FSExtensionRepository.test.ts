@@ -38,14 +38,14 @@ describe('FSExtensionRepository', () => {
         '  description: "Specification agents."',
         'provides:',
         '  commands:',
-        '    - name: "speckit.spec.po"',
+        '    - name: "speckit.spec-agents.po"',
         '      file: "commands/po.md"',
-        '    - name: "speckit.spec.architecture"',
+        '    - name: "speckit.spec-agents.architecture"',
         '      file: "commands/architecture.md"',
         'hooks:',
         '  after_specify:',
         '    - id: spec-po',
-        '      command: "speckit.spec.po"',
+        '      command: "speckit.spec-agents.po"',
       ].join('\n'),
       'utf-8'
     );

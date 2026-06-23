@@ -14,16 +14,16 @@ requires:
 
 provides:
   commands:
-    - name: "speckit.spec.po"
+    - name: "speckit.spec-agents.po"
       file: "commands/po.md"
       description: "Product Owner agent: business value, scope and acceptance criteria."
-    - name: "speckit.spec.architecture"
+    - name: "speckit.spec-agents.architecture"
       file: "commands/architecture.md"
       description: "Architecture agent: technical risks, non-functional requirements and constraints."
-    - name: "speckit.spec.refine"
+    - name: "speckit.spec-agents.refine"
       file: "commands/refine.md"
       description: "Technical Refinement agent: requirement clarity, ambiguities and testability."
-    - name: "speckit.spec.consolidate"
+    - name: "speckit.spec-agents.consolidate"
       file: "commands/consolidate.md"
       description: "Consolidate lead: merges the spec-reviews contributions into spec.md."
 
@@ -33,25 +33,25 @@ hooks:
   after_specify:
     - id: spec-po
       extension: "spec-agents"
-      command: "speckit.spec.po"
+      command: "speckit.spec-agents.po"
       optional: true
       priority: 10
       description: "Product Owner review of the specification."
     - id: spec-architecture
       extension: "spec-agents"
-      command: "speckit.spec.architecture"
+      command: "speckit.spec-agents.architecture"
       optional: true
       priority: 20
       description: "Architecture review of the specification."
     - id: spec-refine
       extension: "spec-agents"
-      command: "speckit.spec.refine"
+      command: "speckit.spec-agents.refine"
       optional: true
       priority: 30
       description: "Technical refinement of the specification."
     - id: spec-consolidate
       extension: "spec-agents"
-      command: "speckit.spec.consolidate"
+      command: "speckit.spec-agents.consolidate"
       optional: true
       priority: 90
       description: "Consolidate the contributions into spec.md."

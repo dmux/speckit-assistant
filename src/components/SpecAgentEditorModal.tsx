@@ -42,7 +42,7 @@ export const SpecAgentEditorModal: React.FC<SpecAgentEditorModalProps> = ({ isOp
 
   const handleSave = () => {
     const id = agent?.id || slugify(label);
-    const command = agent?.command || `speckit.spec.${id}`;
+    const command = agent?.command || `speckit.spec-agents.${id}`;
     onSave({
       id,
       label: label.trim() || 'Untitled Agent',
@@ -97,7 +97,7 @@ export const SpecAgentEditorModal: React.FC<SpecAgentEditorModalProps> = ({ isOp
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>Slash Command</label>
-              <input className={`${input} font-mono disabled:opacity-60`} value={agent?.command || (label ? `speckit.spec.${slugify(label)}` : '')} disabled placeholder="speckit.spec.<id>" />
+              <input className={`${input} font-mono disabled:opacity-60`} value={agent?.command || (label ? `speckit.spec-agents.${slugify(label)}` : '')} disabled placeholder="speckit.spec-agents.<id>" />
             </div>
             <div>
               <label className={labelCls}>Priority (lower runs first)</label>

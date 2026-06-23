@@ -4,9 +4,9 @@ import { SpecAgentsFile } from '../models/specAgents';
 
 const file: SpecAgentsFile = {
   agents: [
-    { id: 'spec-refine', label: 'Refine', command: 'speckit.spec.refine', enabled: true, optional: true, priority: 30 },
-    { id: 'spec-po', label: 'PO', command: 'speckit.spec.po', enabled: true, optional: true, priority: 10 },
-    { id: 'spec-arch', label: 'Arch', command: 'speckit.spec.architecture', enabled: false, optional: true, priority: 20 },
+    { id: 'spec-refine', label: 'Refine', command: 'speckit.spec-agents.refine', enabled: true, optional: true, priority: 30 },
+    { id: 'spec-po', label: 'PO', command: 'speckit.spec-agents.po', enabled: true, optional: true, priority: 10 },
+    { id: 'spec-arch', label: 'Arch', command: 'speckit.spec-agents.architecture', enabled: false, optional: true, priority: 20 },
   ],
 };
 
